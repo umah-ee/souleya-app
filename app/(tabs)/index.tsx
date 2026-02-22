@@ -1,93 +1,139 @@
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  ActivityIndicator, RefreshControl,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth';
+import { fetchFeed } from '../../lib/pulse';
+import type { Pulse } from '../../types/pulse';
+import PulseCard from '../../components/PulseCard';
+import CreatePulseModal from '../../components/CreatePulseModal';
 
 export default function HomeScreen() {
   const { session } = useAuthStore();
+  const insets = useSafeAreaInsets();
+  const [pulses, setPulses] = useState<Pulse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+
+  const userId = session?.user.id;
+
+  const loadFeed = useCallback(async (pageNum: number, replace: boolean) => {
+    const result = await fetchFeed(pageNum, 20, userId);
+    setPulses((prev) => replace ? result.pulses : [...prev, ...result.pulses]);
+    setHasMore(result.hasMore);
+    setPage(pageNum);
+  }, [userId]);
+
+  useEffect(() => {
+    setLoading(true);
+    loadFeed(1, true).finally(() => setLoading(false));
+  }, [loadFeed]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadFeed(1, true);
+    setRefreshing(false);
+  };
+
+  const handleLoadMore = async () => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    await loadFeed(page + 1, false);
+    setLoadingMore(false);
+  };
+
+  const handleCreated = (pulse: Pulse) => {
+    setPulses((prev) => [pulse, ...prev]);
+  };
+
+  const handleDelete = (id: string) => {
+    setPulses((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.center, { paddingTop: insets.top }]}>
+        <ActivityIndicator color="#C8A96E" />
+      </View>
+    );
+  }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.logo}>◯</Text>
-        <Text style={styles.logoText}>SOULEYA</Text>
+        <Text style={styles.headerLogo}>◯</Text>
+        <Text style={styles.headerTitle}>PULSE</Text>
       </View>
 
-      {/* Welcome */}
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>WILLKOMMEN</Text>
-        <Text style={styles.cardTitle}>
-          Deine Community{'\n'}für Wachstum
-        </Text>
-        <Text style={styles.cardText}>
-          Der Pulse-Feed und alle weiteren Features{'\n'}
-          erscheinen hier beim Launch am 01.07.2026.
-        </Text>
-      </View>
+      <FlatList
+        data={pulses}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <PulseCard pulse={item} currentUserId={userId} onDelete={handleDelete} />
+        )}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#C8A96E" />
+        }
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={loadingMore ? <ActivityIndicator color="#C8A96E" style={{ margin: 16 }} /> : null}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>Der Pulse wartet</Text>
+            <Text style={styles.emptyText}>Teile als erstes deinen Impuls.</Text>
+          </View>
+        }
+      />
 
+      {/* FAB – Neuer Pulse */}
       {session && (
-        <Text style={styles.email}>{session.user.email}</Text>
+        <TouchableOpacity
+          style={[styles.fab, { bottom: insets.bottom + 80 }]}
+          onPress={() => setShowCreate(true)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.fabText}>+</Text>
+        </TouchableOpacity>
       )}
-    </ScrollView>
+
+      <CreatePulseModal
+        visible={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={handleCreated}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#18161F',
-  },
-  content: {
-    padding: 24,
-    paddingTop: 64,
-  },
+  container: { flex: 1, backgroundColor: '#18161F' },
+  center: { flex: 1, backgroundColor: '#18161F', alignItems: 'center', justifyContent: 'center' },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 32,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(200,169,110,0.08)',
   },
-  logo: {
-    fontSize: 28,
-    color: '#C8A96E',
+  headerLogo: { fontSize: 22, color: '#C8A96E' },
+  headerTitle: { fontSize: 11, letterSpacing: 4, color: '#C8A96E' },
+  listContent: { padding: 16 },
+  empty: { alignItems: 'center', paddingVertical: 64, paddingHorizontal: 32 },
+  emptyTitle: { fontSize: 20, fontWeight: '300', color: '#A8894E', marginBottom: 8, letterSpacing: 1 },
+  emptyText: { fontSize: 13, color: '#5A5450', textAlign: 'center' },
+  fab: {
+    position: 'absolute', right: 20,
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: '#C8A96E',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#C8A96E', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 12, elevation: 8,
   },
-  logoText: {
-    fontSize: 16,
-    fontWeight: '300',
-    letterSpacing: 8,
-    color: '#C8A96E',
-  },
-  card: {
-    backgroundColor: '#2C2A35',
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(200,169,110,0.1)',
-    marginBottom: 16,
-  },
-  cardLabel: {
-    fontSize: 9,
-    letterSpacing: 3,
-    color: '#A8894E',
-    marginBottom: 8,
-  },
-  cardTitle: {
-    fontSize: 24,
-    fontWeight: '300',
-    color: '#D4BC8B',
-    letterSpacing: 1,
-    lineHeight: 32,
-    marginBottom: 12,
-  },
-  cardText: {
-    fontSize: 13,
-    color: '#a09a90',
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  email: {
-    fontSize: 11,
-    color: '#5A5450',
-    textAlign: 'center',
-    marginTop: 8,
-  },
+  fabText: { fontSize: 24, color: '#2C2A35', lineHeight: 28, fontWeight: '300' },
 });
