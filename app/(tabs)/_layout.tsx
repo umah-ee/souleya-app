@@ -42,6 +42,20 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="discover"
+        options={{
+          title: 'Discover',
+          tabBarIcon: ({ focused }) => <TabIcon label="◈" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="circles"
+        options={{
+          title: 'Circle',
+          tabBarIcon: ({ focused }) => <TabIcon label="⊕" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profil',

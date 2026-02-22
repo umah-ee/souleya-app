@@ -24,11 +24,11 @@ export default function HomeScreen() {
   const userId = session?.user.id;
 
   const loadFeed = useCallback(async (pageNum: number, replace: boolean) => {
-    const result = await fetchFeed(pageNum, 20, userId);
+    const result = await fetchFeed(pageNum, 20);
     setPulses((prev) => replace ? result.pulses : [...prev, ...result.pulses]);
     setHasMore(result.hasMore);
     setPage(pageNum);
-  }, [userId]);
+  }, []);
 
   useEffect(() => {
     setLoading(true);

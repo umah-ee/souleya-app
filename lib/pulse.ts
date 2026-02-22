@@ -1,66 +1,48 @@
-import { supabase } from './supabase';
-import type { Pulse } from '../types/pulse';
+import { apiFetch } from './api';
+import type { Pulse, PulseComment } from '../types/pulse';
 
-export async function fetchFeed(page = 1, limit = 20, userId?: string) {
-  const from = (page - 1) * limit;
-  const to = from + limit - 1;
-
-  const { data, error, count } = await supabase
-    .from('pulses')
-    .select(
-      `*, author:profiles!author_id(id, username, display_name, avatar_url, vip_level, is_origin_soul)`,
-      { count: 'exact' },
-    )
-    .order('created_at', { ascending: false })
-    .range(from, to);
-
-  if (error) throw error;
-
-  const pulses = (data ?? []) as Pulse[];
-
-  if (userId && pulses.length > 0) {
-    const { data: likes } = await supabase
-      .from('pulse_likes')
-      .select('pulse_id')
-      .eq('user_id', userId)
-      .in('pulse_id', pulses.map((p) => p.id));
-
-    const likedSet = new Set((likes ?? []).map((l: { pulse_id: string }) => l.pulse_id));
-    pulses.forEach((p) => { p.has_liked = likedSet.has(p.id); });
-  }
-
-  return { pulses, total: count ?? 0, hasMore: (count ?? 0) > page * limit };
+// ── Feed laden (paginiert) ──────────────────────────────────
+export async function fetchFeed(page = 1, limit = 20) {
+  const res = await apiFetch<{ data: Pulse[]; total: number; hasMore: boolean }>(
+    `/pulse?page=${page}&limit=${limit}`,
+  );
+  return { pulses: res.data, total: res.total, hasMore: res.hasMore };
 }
 
-export async function createPulse(content: string): Promise<Pulse> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Nicht eingeloggt');
-
-  const { data, error } = await supabase
-    .from('pulses')
-    .insert({ author_id: user.id, content })
-    .select(`*, author:profiles!author_id(id, username, display_name, avatar_url, vip_level, is_origin_soul)`)
-    .single();
-
-  if (error) throw error;
-  return { ...(data as Pulse), has_liked: false };
+// ── Pulse erstellen ─────────────────────────────────────────
+export async function createPulse(content: string, imageUrl?: string): Promise<Pulse> {
+  return apiFetch<Pulse>('/pulse', {
+    method: 'POST',
+    body: JSON.stringify({ content, image_url: imageUrl ?? undefined }),
+  });
 }
 
-export async function toggleLike(pulseId: string, currentlyLiked: boolean) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Nicht eingeloggt');
-
+// ── Like togglen ────────────────────────────────────────────
+export async function toggleLike(
+  pulseId: string,
+  currentlyLiked: boolean,
+): Promise<{ liked: boolean; likes_count: number }> {
   if (currentlyLiked) {
-    await supabase.from('pulse_likes').delete()
-      .eq('user_id', user.id).eq('pulse_id', pulseId);
-    return { liked: false };
+    return apiFetch(`/pulse/${pulseId}/like`, { method: 'DELETE' });
   } else {
-    await supabase.from('pulse_likes').insert({ user_id: user.id, pulse_id: pulseId });
-    return { liked: true };
+    return apiFetch(`/pulse/${pulseId}/like`, { method: 'POST' });
   }
 }
 
+// ── Pulse loeschen ──────────────────────────────────────────
 export async function deletePulse(pulseId: string) {
-  const { error } = await supabase.from('pulses').delete().eq('id', pulseId);
-  if (error) throw error;
+  await apiFetch(`/pulse/${pulseId}`, { method: 'DELETE' });
+}
+
+// ── Kommentare laden ────────────────────────────────────────
+export async function fetchComments(pulseId: string): Promise<PulseComment[]> {
+  return apiFetch<PulseComment[]>(`/pulse/${pulseId}/comments`);
+}
+
+// ── Kommentar hinzufuegen ───────────────────────────────────
+export async function addComment(pulseId: string, content: string): Promise<PulseComment> {
+  return apiFetch<PulseComment>(`/pulse/${pulseId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
 }

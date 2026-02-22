@@ -18,3 +18,10 @@ export interface Pulse {
   author: PulseAuthor;
   has_liked?: boolean;
 }
+
+export interface PulseComment {
+  id: string;
+  content: string;
+  created_at: string;
+  author: Pick<PulseAuthor, 'id' | 'username' | 'display_name' | 'avatar_url'>;
+}
