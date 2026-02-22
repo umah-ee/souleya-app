@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Alert, TextInput, ActivityIndicator, Image,
+  Alert, TextInput, ActivityIndicator, Image, Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { useAuthStore } from '../../store/auth';
 import { supabase } from '../../lib/supabase';
 import { fetchProfile, updateProfile, uploadAvatar } from '../../lib/profile';
+import { geocodeLocation } from '../../lib/events';
 import { router } from 'expo-router';
 import type { Profile } from '../../types/profile';
 import { VIP_NAMES } from '../../types/profile';
@@ -18,6 +20,7 @@ export default function ProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [detectingLocation, setDetectingLocation] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -27,6 +30,8 @@ export default function ProfileScreen() {
     username: '',
     bio: '',
     location: '',
+    location_lat: null as number | null,
+    location_lng: null as number | null,
   });
 
   useEffect(() => {
@@ -38,6 +43,8 @@ export default function ProfileScreen() {
           username: p.username ?? '',
           bio: p.bio ?? '',
           location: p.location ?? '',
+          location_lat: p.location_lat,
+          location_lng: p.location_lng,
         });
       })
       .catch(console.error)
@@ -51,6 +58,8 @@ export default function ProfileScreen() {
       username: profile.username ?? '',
       bio: profile.bio ?? '',
       location: profile.location ?? '',
+      location_lat: profile.location_lat,
+      location_lng: profile.location_lng,
     });
     setEditing(true);
     setError('');
@@ -60,6 +69,44 @@ export default function ProfileScreen() {
   const handleCancel = () => {
     setEditing(false);
     setError('');
+  };
+
+  // GPS-Standort erkennen
+  const handleDetectLocation = async () => {
+    setDetectingLocation(true);
+    setError('');
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Standort-Berechtigung wurde verweigert');
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Low, // Stadtteil-Genauigkeit reicht
+      });
+
+      const { latitude, longitude } = loc.coords;
+      // Reverse Geocoding → Stadtteil-Name
+      const res = await geocodeLocation(`${longitude},${latitude}`, 'reverse');
+      if (res.results.length > 0) {
+        const place = res.results[0];
+        setForm((f) => ({
+          ...f,
+          location: place.place_name.split(',').slice(0, 2).join(',').trim(),
+          location_lat: place.lat,
+          location_lng: place.lng,
+        }));
+        setSuccess('Standort erkannt');
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError('Standort konnte nicht aufgeloest werden');
+      }
+    } catch {
+      setError('Standorterkennung fehlgeschlagen');
+    } finally {
+      setDetectingLocation(false);
+    }
   };
 
   const handleSave = async () => {
@@ -72,6 +119,8 @@ export default function ProfileScreen() {
         username: form.username || undefined,
         bio: form.bio || undefined,
         location: form.location || undefined,
+        location_lat: form.location_lat ?? undefined,
+        location_lng: form.location_lng ?? undefined,
       });
       setProfile(updated);
       setEditing(false);
@@ -269,12 +318,27 @@ export default function ProfileScreen() {
             <TextInput
               style={[styles.input, { flex: 1 }]}
               value={form.location}
-              onChangeText={(v) => setForm((f) => ({ ...f, location: v }))}
+              onChangeText={(v) => setForm((f) => ({ ...f, location: v, location_lat: null, location_lng: null }))}
               placeholder="Ort (z.B. Muenchen – Schwabing)"
               placeholderTextColor="#5A5450"
               maxLength={80}
             />
           </View>
+          <TouchableOpacity
+            style={[styles.detectLocationBtn, detectingLocation && styles.detectLocationBtnDisabled]}
+            onPress={handleDetectLocation}
+            disabled={detectingLocation}
+            activeOpacity={0.7}
+          >
+            {detectingLocation ? (
+              <ActivityIndicator color="#C8A96E" size="small" />
+            ) : (
+              <Text style={styles.detectLocationText}>📍 STANDORT ERKENNEN</Text>
+            )}
+          </TouchableOpacity>
+          {form.location_lat && (
+            <Text style={styles.locationHint}>Standort gesetzt (Stadtteil-Genauigkeit)</Text>
+          )}
         </View>
       ) : (
         <>
@@ -481,4 +545,14 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(200,169,110,0.2)',
   },
   logoutText: { fontSize: 10, letterSpacing: 3, color: '#5A5450' },
+
+  detectLocationBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 10, borderRadius: 12,
+    borderWidth: 1, borderColor: 'rgba(200,169,110,0.2)',
+    backgroundColor: 'rgba(200,169,110,0.05)',
+  },
+  detectLocationBtnDisabled: { opacity: 0.5 },
+  detectLocationText: { fontSize: 9, letterSpacing: 2, color: '#C8A96E' },
+  locationHint: { fontSize: 11, color: '#5A5450', marginLeft: 28 },
 });

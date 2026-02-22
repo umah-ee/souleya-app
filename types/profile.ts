@@ -6,6 +6,8 @@ export interface Profile {
   bio: string | null;
   avatar_url: string | null;
   location: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
   vip_level: number;
   is_origin_soul: boolean;
   seeds_balance: number;
@@ -21,6 +23,8 @@ export interface UpdateProfileData {
   bio?: string;
   location?: string;
   avatar_url?: string;
+  location_lat?: number;
+  location_lng?: number;
 }
 
 export const VIP_NAMES: Record<number, string> = {
