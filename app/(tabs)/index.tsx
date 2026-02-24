@@ -9,6 +9,7 @@ import { fetchFeed } from '../../lib/pulse';
 import type { Pulse } from '../../types/pulse';
 import PulseCard from '../../components/PulseCard';
 import CreatePulseModal from '../../components/CreatePulseModal';
+import { Icon } from '../../components/Icon';
 
 export default function HomeScreen() {
   const { session } = useAuthStore();
@@ -68,7 +69,7 @@ export default function HomeScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerLogo}>◯</Text>
+        <Icon name="home" size={22} color="#C8A96E" />
         <Text style={styles.headerTitle}>PULSE</Text>
       </View>
 
@@ -100,7 +101,7 @@ export default function HomeScreen() {
           onPress={() => setShowCreate(true)}
           activeOpacity={0.85}
         >
-          <Text style={styles.fabText}>+</Text>
+          <Icon name="plus" size={24} color="#2C2A35" />
         </TouchableOpacity>
       )}
 

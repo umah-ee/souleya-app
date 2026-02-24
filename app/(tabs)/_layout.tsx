@@ -1,15 +1,8 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Icon, type IconName } from '../../components/Icon';
 
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
-  return (
-    <Text style={{
-      fontSize: 18,
-      opacity: focused ? 1 : 0.4,
-    }}>
-      {label}
-    </Text>
-  );
+function TabBarIcon({ name, color }: { name: IconName; color: string }) {
+  return <Icon name={name} size={20} color={color} />;
 }
 
 export default function TabsLayout() {
@@ -37,29 +30,36 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ focused }) => <TabIcon label="◎" focused={focused} />,
+          title: 'Pulse',
+          tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
         }}
       />
       <Tabs.Screen
         name="discover"
         options={{
           title: 'Discover',
-          tabBarIcon: ({ focused }) => <TabIcon label="◈" focused={focused} />,
+          tabBarIcon: ({ color }) => <TabBarIcon name="compass" color={color} />,
         }}
       />
       <Tabs.Screen
         name="circles"
         options={{
-          title: 'Circle',
-          tabBarIcon: ({ focused }) => <TabIcon label="⊕" focused={focused} />,
+          title: 'Kontakte',
+          tabBarIcon: ({ color }) => <TabBarIcon name="users" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          tabBarIcon: ({ color }) => <TabBarIcon name="message-circle" color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profil',
-          tabBarIcon: ({ focused }) => <TabIcon label="◯" focused={focused} />,
+          tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
         }}
       />
     </Tabs>

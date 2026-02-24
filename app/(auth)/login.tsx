@@ -5,6 +5,7 @@ import {
   ActivityIndicator, Alert,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { Icon } from '../../components/Icon';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -78,7 +79,9 @@ export default function LoginScreen() {
           </>
         ) : (
           <>
-            <Text style={styles.successIcon}>✓</Text>
+            <View style={{ marginBottom: 12 }}>
+              <Icon name="check" size={32} color="#52B788" />
+            </View>
             <Text style={styles.successLabel}>MAGIC LINK GESENDET</Text>
             <Text style={styles.successText}>
               Prüfe dein Postfach für{'\n'}
@@ -140,7 +143,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(200,169,110,0.2)',
-    borderRadius: 999,
+    borderRadius: 8,
     color: '#F0EDE8',
     fontSize: 14,
     textAlign: 'center',

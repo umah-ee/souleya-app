@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import type { Pulse, PulseComment } from '../types/pulse';
 import { toggleLike, deletePulse, fetchComments, addComment } from '../lib/pulse';
+import { Icon } from './Icon';
 
 interface Props {
   pulse: Pulse;
@@ -98,7 +99,7 @@ export default function PulseCard({ pulse, currentUserId, onDelete }: Props) {
     <View style={styles.card}>
       {/* Author */}
       <View style={styles.authorRow}>
-        <View style={[styles.avatar, pulse.author.is_origin_soul && styles.avatarOrigin]}>
+        <View style={[styles.avatar, pulse.author.is_first_light && styles.avatarFirstLight]}>
           {pulse.author.avatar_url ? (
             <Image source={{ uri: pulse.author.avatar_url }} style={styles.avatarImg} />
           ) : (
@@ -110,9 +111,9 @@ export default function PulseCard({ pulse, currentUserId, onDelete }: Props) {
         <View style={styles.authorInfo}>
           <View style={styles.authorNameRow}>
             <Text style={styles.authorName}>{authorName}</Text>
-            {pulse.author.is_origin_soul && (
-              <View style={styles.originBadge}>
-                <Text style={styles.originBadgeText}>ORIGIN SOUL</Text>
+            {pulse.author.is_first_light && (
+              <View style={styles.firstLightBadge}>
+                <Text style={styles.firstLightBadgeText}>FIRST LIGHT</Text>
               </View>
             )}
           </View>
@@ -120,7 +121,7 @@ export default function PulseCard({ pulse, currentUserId, onDelete }: Props) {
         </View>
         {isOwner && (
           <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
-            <Text style={styles.deleteBtnText}>×</Text>
+            <Icon name="x" size={16} color="#5A5450" />
           </TouchableOpacity>
         )}
       </View>
@@ -145,9 +146,7 @@ export default function PulseCard({ pulse, currentUserId, onDelete }: Props) {
           style={styles.actionBtn}
           activeOpacity={0.7}
         >
-          <Text style={[styles.actionIcon, liked && styles.actionIconLiked]}>
-            {liked ? '♥' : '♡'}
-          </Text>
+          <Icon name={liked ? 'heart-filled' : 'heart'} size={16} color={liked ? '#C8A96E' : '#5A5450'} />
           <Text style={[styles.actionText, liked && styles.actionTextLiked]}>
             {likesCount > 0 ? `${likesCount} ` : ''}LIKE
           </Text>
@@ -158,7 +157,7 @@ export default function PulseCard({ pulse, currentUserId, onDelete }: Props) {
           style={styles.actionBtn}
           activeOpacity={0.7}
         >
-          <Text style={[styles.actionIcon, showComments && styles.actionIconLiked]}>○</Text>
+          <Icon name="message-circle" size={16} color={showComments ? '#C8A96E' : '#5A5450'} />
           <Text style={[styles.actionText, showComments && styles.actionTextLiked]}>
             {commentsCount > 0 ? `${commentsCount} ` : ''}KOMMENTARE
           </Text>
@@ -249,7 +248,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  avatarOrigin: {
+  avatarFirstLight: {
     borderColor: 'rgba(200,169,110,0.5)',
   },
   avatarImg: { width: 38, height: 38, borderRadius: 19 },
@@ -261,13 +260,13 @@ const styles = StyleSheet.create({
   authorInfo: { flex: 1 },
   authorNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   authorName: { fontSize: 13, color: '#F0EDE8', fontWeight: '500' },
-  originBadge: {
+  firstLightBadge: {
     paddingHorizontal: 6, paddingVertical: 1,
     borderRadius: 99, borderWidth: 1,
     borderColor: 'rgba(168,137,78,0.3)',
     backgroundColor: 'rgba(168,137,78,0.1)',
   },
-  originBadgeText: { fontSize: 7, letterSpacing: 2, color: '#A8894E' },
+  firstLightBadgeText: { fontSize: 7, letterSpacing: 2, color: '#A8894E' },
   timestamp: { fontSize: 11, color: '#5A5450', marginTop: 1 },
   deleteBtn: { padding: 4 },
   deleteBtnText: { color: '#5A5450', fontSize: 18, lineHeight: 20 },
@@ -320,7 +319,7 @@ const styles = StyleSheet.create({
     flex: 1, paddingVertical: 8, paddingHorizontal: 12,
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1, borderColor: 'rgba(200,169,110,0.1)',
-    borderRadius: 12, color: '#F0EDE8', fontSize: 12,
+    borderRadius: 8, color: '#F0EDE8', fontSize: 12,
   },
   commentSendBtn: {
     paddingHorizontal: 12, paddingVertical: 8,

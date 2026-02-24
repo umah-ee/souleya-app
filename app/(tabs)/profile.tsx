@@ -11,7 +11,8 @@ import { fetchProfile, updateProfile, uploadAvatar } from '../../lib/profile';
 import { geocodeLocation } from '../../lib/events';
 import { router } from 'expo-router';
 import type { Profile } from '../../types/profile';
-import { VIP_NAMES } from '../../types/profile';
+import { SOUL_LEVEL_NAMES } from '../../types/profile';
+import { Icon } from '../../components/Icon';
 
 export default function ProfileScreen() {
   const { session } = useAuthStore();
@@ -201,7 +202,7 @@ export default function ProfileScreen() {
   }
 
   const initials = (profile.display_name ?? profile.username ?? profile.email ?? '?').slice(0, 1).toUpperCase();
-  const vipName = VIP_NAMES[profile.vip_level] ?? `VIP ${profile.vip_level}`;
+  const vipName = SOUL_LEVEL_NAMES[profile.soul_level] ?? `Level ${profile.soul_level}`;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -236,7 +237,7 @@ export default function ProfileScreen() {
         >
           <View style={[
             styles.avatar,
-            profile.is_origin_soul && styles.avatarOrigin,
+            profile.is_first_light && styles.avatarFirstLight,
           ]}>
             {profile.avatar_url ? (
               <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
@@ -251,7 +252,7 @@ export default function ProfileScreen() {
           </View>
           {editing && (
             <View style={styles.editAvatarIcon}>
-              <Text style={styles.editAvatarIconText}>✎</Text>
+              <Icon name="edit" size={12} color="#1E1C26" />
             </View>
           )}
         </TouchableOpacity>
@@ -291,9 +292,9 @@ export default function ProfileScreen() {
               <View style={styles.vipBadge}>
                 <Text style={styles.vipBadgeText}>{vipName.toUpperCase()}</Text>
               </View>
-              {profile.is_origin_soul && (
-                <View style={styles.originBadge}>
-                  <Text style={styles.originBadgeText}>ORIGIN SOUL</Text>
+              {profile.is_first_light && (
+                <View style={styles.firstLightBadge}>
+                  <Text style={styles.firstLightBadgeText}>FIRST LIGHT</Text>
                 </View>
               )}
             </View>
@@ -314,7 +315,7 @@ export default function ProfileScreen() {
             maxLength={300}
           />
           <View style={styles.locationRow}>
-            <Text style={styles.locationIcon}>📍</Text>
+            <Icon name="map-pin" size={14} color="#C8A96E" />
             <TextInput
               style={[styles.input, { flex: 1 }]}
               value={form.location}
@@ -333,7 +334,10 @@ export default function ProfileScreen() {
             {detectingLocation ? (
               <ActivityIndicator color="#C8A96E" size="small" />
             ) : (
-              <Text style={styles.detectLocationText}>📍 STANDORT ERKENNEN</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Icon name="current-location" size={14} color="#C8A96E" />
+                <Text style={styles.detectLocationText}>STANDORT ERKENNEN</Text>
+              </View>
             )}
           </TouchableOpacity>
           {form.location_lat && (
@@ -346,7 +350,10 @@ export default function ProfileScreen() {
             <Text style={styles.bio}>{profile.bio}</Text>
           ) : null}
           {profile.location ? (
-            <Text style={styles.location}>📍 {profile.location}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 16 }}>
+              <Icon name="map-pin" size={13} color="#5A5450" />
+              <Text style={[styles.location, { marginBottom: 0 }]}>{profile.location}</Text>
+            </View>
           ) : null}
         </>
       )}
@@ -442,7 +449,7 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: 'rgba(200,169,110,0.2)',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  avatarOrigin: {
+  avatarFirstLight: {
     borderColor: 'rgba(200,169,110,0.6)',
     shadowColor: '#C8A96E', shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.2, shadowRadius: 15,
@@ -471,19 +478,19 @@ const styles = StyleSheet.create({
     borderRadius: 999, borderWidth: 1, borderColor: 'rgba(168,137,78,0.3)',
   },
   vipBadgeText: { fontSize: 8, letterSpacing: 2, color: '#A8894E' },
-  originBadge: {
+  firstLightBadge: {
     paddingVertical: 3, paddingHorizontal: 10,
     borderRadius: 999, borderWidth: 1,
     borderColor: 'rgba(200,169,110,0.4)',
     backgroundColor: 'rgba(200,169,110,0.1)',
   },
-  originBadgeText: { fontSize: 8, letterSpacing: 2, color: '#C8A96E' },
+  firstLightBadgeText: { fontSize: 8, letterSpacing: 2, color: '#C8A96E' },
 
   editFields: { flex: 1, gap: 10 },
   input: {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1, borderColor: 'rgba(200,169,110,0.2)',
-    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10,
     color: '#F0EDE8', fontSize: 14,
   },
   usernameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

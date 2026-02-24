@@ -3,8 +3,8 @@ export interface ConnectionProfile {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
-  vip_level: number;
-  is_origin_soul: boolean;
+  soul_level: number;
+  is_first_light: boolean;
 }
 
 export interface Connection {

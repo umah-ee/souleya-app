@@ -20,7 +20,7 @@ export interface SoEvent {
     display_name: string | null;
     username: string | null;
     avatar_url: string | null;
-    is_origin_soul: boolean;
+    is_first_light: boolean;
   };
   has_joined?: boolean;
 }

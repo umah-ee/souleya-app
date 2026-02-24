@@ -12,6 +12,7 @@ import {
 import type { Connection } from '../../types/circles';
 import type { Pulse } from '../../types/pulse';
 import PulseCard from '../../components/PulseCard';
+import { Icon } from '../../components/Icon';
 
 type Tab = 'feed' | 'connections' | 'requests';
 
@@ -120,7 +121,7 @@ export default function CirclesScreen() {
     const initial = name.slice(0, 1).toUpperCase();
     return (
       <View style={styles.card}>
-        <View style={[styles.avatar, item.profile.is_origin_soul && styles.avatarOrigin]}>
+        <View style={[styles.avatar, item.profile.is_first_light && styles.avatarFirstLight]}>
           {item.profile.avatar_url ? (
             <Image source={{ uri: item.profile.avatar_url }} style={styles.avatarImg} />
           ) : (
@@ -150,7 +151,7 @@ export default function CirclesScreen() {
     const initial = name.slice(0, 1).toUpperCase();
     return (
       <View style={styles.card}>
-        <View style={[styles.avatar, item.profile.is_origin_soul && styles.avatarOrigin]}>
+        <View style={[styles.avatar, item.profile.is_first_light && styles.avatarFirstLight]}>
           {item.profile.avatar_url ? (
             <Image source={{ uri: item.profile.avatar_url }} style={styles.avatarImg} />
           ) : (
@@ -163,10 +164,10 @@ export default function CirclesScreen() {
         </View>
         <View style={styles.requestActions}>
           <TouchableOpacity style={styles.acceptBtn} onPress={() => handleAccept(item)} activeOpacity={0.7}>
-            <Text style={styles.acceptBtnText}>✓</Text>
+            <Icon name="check" size={16} color="#52B788" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.declineBtn} onPress={() => handleDecline(item)} activeOpacity={0.7}>
-            <Text style={styles.declineBtnText}>✕</Text>
+            <Icon name="x" size={14} color="#5A5450" />
           </TouchableOpacity>
         </View>
       </View>
@@ -179,7 +180,7 @@ export default function CirclesScreen() {
     const initial = name.slice(0, 1).toUpperCase();
     return (
       <View style={styles.card}>
-        <View style={[styles.avatar, item.profile.is_origin_soul && styles.avatarOrigin]}>
+        <View style={[styles.avatar, item.profile.is_first_light && styles.avatarFirstLight]}>
           {item.profile.avatar_url ? (
             <Image source={{ uri: item.profile.avatar_url }} style={styles.avatarImg} />
           ) : (
@@ -201,8 +202,8 @@ export default function CirclesScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerIcon}>⊕</Text>
-        <Text style={styles.headerTitle}>CIRCLE</Text>
+        <Icon name="users" size={22} color="#C8A96E" />
+        <Text style={styles.headerTitle}>KONTAKTE</Text>
       </View>
 
       {/* Tab-Leiste */}
@@ -348,7 +349,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(200,169,110,0.2)',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  avatarOrigin: { borderColor: 'rgba(200,169,110,0.5)' },
+  avatarFirstLight: { borderColor: 'rgba(200,169,110,0.5)' },
   avatarImg: { width: 44, height: 44, borderRadius: 22 },
   avatarText: { fontSize: 17, color: '#C8A96E', fontWeight: '300' },
   cardInfo: { flex: 1 },

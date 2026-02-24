@@ -10,6 +10,7 @@ import { sendConnectionRequest, getConnectionStatus } from '../../lib/circles';
 import { fetchNearbyUsers, fetchEvents, joinEvent, leaveEvent } from '../../lib/events';
 import type { ConnectionStatus } from '../../types/circles';
 import type { SoEvent } from '../../types/events';
+import { Icon } from '../../components/Icon';
 
 type DiscoverTab = 'nearby' | 'events';
 
@@ -27,8 +28,8 @@ interface NearbyUser {
   location: string | null;
   location_lat: number;
   location_lng: number;
-  vip_level: number;
-  is_origin_soul: boolean;
+  soul_level: number;
+  is_first_light: boolean;
   connections_count: number;
 }
 
@@ -186,7 +187,7 @@ export default function DiscoverScreen() {
     const isMe = item.id === userId;
     return (
       <View style={styles.card}>
-        <View style={[styles.avatar, item.is_origin_soul && styles.avatarOrigin]}>
+        <View style={[styles.avatar, item.is_first_light && styles.avatarFirstLight]}>
           {item.avatar_url ? (
             <Image source={{ uri: item.avatar_url }} style={styles.avatarImg} />
           ) : (
@@ -196,8 +197,8 @@ export default function DiscoverScreen() {
         <View style={styles.cardInfo}>
           <View style={styles.nameRow}>
             <Text style={styles.cardName} numberOfLines={1}>{name}</Text>
-            {item.is_origin_soul && (
-              <View style={styles.originBadge}><Text style={styles.originBadgeText}>ORIGIN</Text></View>
+            {item.is_first_light && (
+              <View style={styles.firstLightBadge}><Text style={styles.firstLightBadgeText}>FIRST LIGHT</Text></View>
             )}
           </View>
           {item.username && <Text style={styles.cardHandle}>@{item.username}</Text>}
@@ -229,7 +230,7 @@ export default function DiscoverScreen() {
     const initial = name.slice(0, 1).toUpperCase();
     return (
       <View style={styles.card}>
-        <View style={[styles.avatar, item.is_origin_soul && styles.avatarOrigin]}>
+        <View style={[styles.avatar, item.is_first_light && styles.avatarFirstLight]}>
           {item.avatar_url ? (
             <Image source={{ uri: item.avatar_url }} style={styles.avatarImg} />
           ) : (
@@ -239,12 +240,17 @@ export default function DiscoverScreen() {
         <View style={styles.cardInfo}>
           <View style={styles.nameRow}>
             <Text style={styles.cardName} numberOfLines={1}>{name}</Text>
-            {item.is_origin_soul && (
-              <View style={styles.originBadge}><Text style={styles.originBadgeText}>ORIGIN</Text></View>
+            {item.is_first_light && (
+              <View style={styles.firstLightBadge}><Text style={styles.firstLightBadgeText}>FIRST LIGHT</Text></View>
             )}
           </View>
           {item.username && <Text style={styles.cardHandle}>@{item.username}</Text>}
-          {item.location && <Text style={styles.cardMeta}>📍 {item.location}</Text>}
+          {item.location && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+              <Icon name="map-pin" size={11} color={COLORS.textMuted} />
+              <Text style={styles.cardMeta}>{item.location}</Text>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -276,7 +282,10 @@ export default function DiscoverScreen() {
         )}
 
         {/* Ort */}
-        <Text style={styles.eventLocation}>📍 {item.location_name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 }}>
+          <Icon name="map-pin" size={11} color={COLORS.textMuted} />
+          <Text style={[styles.eventLocation, { marginBottom: 0 }]}>{item.location_name}</Text>
+        </View>
 
         {/* Footer */}
         <View style={styles.eventFooter}>
@@ -313,7 +322,7 @@ export default function DiscoverScreen() {
       {/* ── FULLSCREEN KARTEN-PLATZHALTER (Hintergrund) ──── */}
       <View style={StyleSheet.absoluteFill}>
         <View style={styles.mapFull}>
-          <Text style={styles.mapPlaceholderIcon}>🗺️</Text>
+          <Icon name="map" size={48} color={COLORS.textMuted} />
           <Text style={styles.mapPlaceholderText}>Karte verfuegbar im Development Build</Text>
         </View>
       </View>
@@ -321,7 +330,7 @@ export default function DiscoverScreen() {
       {/* ── FLOATING HEADER + SUCHE ────────────────────────── */}
       <View style={[styles.floatingHeader, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerRow}>
-          <Text style={styles.headerIcon}>◈</Text>
+          <Icon name="compass" size={22} color={COLORS.goldDeep} />
           <Text style={styles.headerTitle}>DISCOVER</Text>
         </View>
         <View style={styles.searchContainer}>
@@ -489,7 +498,7 @@ const styles = StyleSheet.create({
   searchInput: {
     backgroundColor: COLORS.glass,
     borderWidth: 1, borderColor: COLORS.cardBorder,
-    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12,
+    borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12,
     color: COLORS.textH, fontSize: 14,
   },
 
@@ -559,7 +568,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(200,169,110,0.3)',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  avatarOrigin: { borderColor: 'rgba(200,169,110,0.6)' },
+  avatarFirstLight: { borderColor: 'rgba(200,169,110,0.6)' },
   avatarImg: { width: 44, height: 44, borderRadius: 22 },
   avatarText: { fontSize: 17, color: COLORS.goldDeep, fontWeight: '300' },
   cardInfo: { flex: 1 },
@@ -568,12 +577,12 @@ const styles = StyleSheet.create({
   cardHandle: { fontSize: 12, color: COLORS.textSec, marginTop: 1 },
   cardBio: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
   cardMeta: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
-  originBadge: {
+  firstLightBadge: {
     paddingHorizontal: 5, paddingVertical: 1,
     borderRadius: 99, borderWidth: 1,
     borderColor: 'rgba(200,169,110,0.4)', backgroundColor: COLORS.goldBg,
   },
-  originBadgeText: { fontSize: 7, letterSpacing: 2, color: COLORS.goldDeep },
+  firstLightBadgeText: { fontSize: 7, letterSpacing: 2, color: COLORS.goldDeep },
 
   // ── Action Buttons ─────────────────────────────────────
   actionBtn: {

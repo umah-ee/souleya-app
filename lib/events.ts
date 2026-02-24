@@ -60,8 +60,8 @@ export async function fetchNearbyUsers(lat: number, lng: number, radius = 25) {
       location: string | null;
       location_lat: number;
       location_lng: number;
-      vip_level: number;
-      is_origin_soul: boolean;
+      soul_level: number;
+      is_first_light: boolean;
       connections_count: number;
     }>;
     total: number;

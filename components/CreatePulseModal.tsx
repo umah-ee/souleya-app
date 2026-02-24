@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { createPulse } from '../lib/pulse';
 import type { Pulse } from '../types/pulse';
+import { Icon } from './Icon';
 
 interface Props {
   visible: boolean;
@@ -44,7 +45,7 @@ export default function CreatePulseModal({ visible, onClose, onCreated }: Props)
           <View style={styles.header}>
             <Text style={styles.title}>NEUER PULSE</Text>
             <TouchableOpacity onPress={onClose}>
-              <Text style={styles.closeBtn}>×</Text>
+              <Icon name="x" size={20} color="#5A5450" />
             </TouchableOpacity>
           </View>
 
