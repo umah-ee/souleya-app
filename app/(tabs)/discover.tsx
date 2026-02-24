@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TextInput, FlatList, TouchableOpacity,
-  StyleSheet, ActivityIndicator, Image, ScrollView,
+  StyleSheet, ActivityIndicator, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth';
@@ -310,52 +310,57 @@ export default function DiscoverScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerIcon}>◈</Text>
-        <Text style={styles.headerTitle}>DISCOVER</Text>
+      {/* ── FULLSCREEN KARTEN-PLATZHALTER (Hintergrund) ──── */}
+      <View style={StyleSheet.absoluteFill}>
+        <View style={styles.mapFull}>
+          <Text style={styles.mapPlaceholderIcon}>🗺️</Text>
+          <Text style={styles.mapPlaceholderText}>Karte verfuegbar im Development Build</Text>
+        </View>
       </View>
 
-      {/* Suche */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Suche nach Namen oder @username …"
-          placeholderTextColor="#5A5450"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-      </View>
-
-      {/* ── SUCHE AKTIV ─────────────────────────────────── */}
-      {isSearchActive ? (
-        searching ? (
-          <View style={styles.center}>
-            <ActivityIndicator color="#C8A96E" />
-          </View>
-        ) : searchResults.length === 0 && searched ? (
-          <View style={styles.center}>
-            <Text style={styles.emptyText}>Keine Ergebnisse</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={searchResults}
-            keyExtractor={(item) => item.id}
-            renderItem={renderSearchUser}
-            contentContainerStyle={styles.listContent}
+      {/* ── FLOATING HEADER + SUCHE ────────────────────────── */}
+      <View style={[styles.floatingHeader, { paddingTop: insets.top + 12 }]}>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerIcon}>◈</Text>
+          <Text style={styles.headerTitle}>DISCOVER</Text>
+        </View>
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Souls suchen ..."
+            placeholderTextColor="#9A8870"
+            autoCapitalize="none"
+            autoCorrect={false}
           />
-        )
-      ) : (
-        /* ── DISCOVER-MODUS ─────────────────────────────── */
-        <>
-          {/* Karten-Platzhalter (fuer @rnmapbox/maps im Dev-Build) */}
-          <View style={styles.mapPlaceholder}>
-            <Text style={styles.mapPlaceholderIcon}>🗺️</Text>
-            <Text style={styles.mapPlaceholderText}>Karte verfuegbar im Development Build</Text>
-          </View>
+        </View>
+      </View>
 
+      {/* ── SUCHE AKTIV → Liste ────────────────────────────── */}
+      {isSearchActive ? (
+        <View style={[styles.searchOverlay, { paddingTop: insets.top + 100 }]}>
+          {searching ? (
+            <View style={styles.center}>
+              <ActivityIndicator color="#9A7218" />
+            </View>
+          ) : searchResults.length === 0 && searched ? (
+            <View style={styles.center}>
+              <Text style={styles.hintTitle}>Keine Ergebnisse</Text>
+              <Text style={styles.emptyText}>Versuche einen anderen Suchbegriff.</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => item.id}
+              renderItem={renderSearchUser}
+              contentContainerStyle={styles.listContent}
+            />
+          )}
+        </View>
+      ) : (
+        /* ── DISCOVER-MODUS: Floating Bottom Cards ─────────── */
+        <View style={styles.bottomPanel}>
           {/* Segment Toggle */}
           <View style={styles.segmentRow}>
             {(['nearby', 'events'] as DiscoverTab[]).map((t) => (
@@ -375,11 +380,11 @@ export default function DiscoverScreen() {
           {/* Tab: Nearby */}
           {tab === 'nearby' && (
             loadingNearby ? (
-              <View style={styles.center}>
-                <ActivityIndicator color="#C8A96E" />
+              <View style={styles.centerSmall}>
+                <ActivityIndicator color="#9A7218" />
               </View>
             ) : nearbyUsers.length === 0 ? (
-              <View style={styles.center}>
+              <View style={styles.centerSmall}>
                 <Text style={styles.hintTitle}>Keine Souls in der Naehe</Text>
                 <Text style={styles.emptyText}>
                   Setze deinen Standort im Profil, um Souls in deiner Naehe zu finden.
@@ -391,6 +396,7 @@ export default function DiscoverScreen() {
                 keyExtractor={(item) => item.id}
                 renderItem={renderNearbyUser}
                 contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
               />
             )
           )}
@@ -398,11 +404,11 @@ export default function DiscoverScreen() {
           {/* Tab: Events */}
           {tab === 'events' && (
             loadingEvents ? (
-              <View style={styles.center}>
-                <ActivityIndicator color="#C8A96E" />
+              <View style={styles.centerSmall}>
+                <ActivityIndicator color="#9A7218" />
               </View>
             ) : events.length === 0 ? (
-              <View style={styles.center}>
+              <View style={styles.centerSmall}>
                 <Text style={styles.hintTitle}>Keine Events in der Naehe</Text>
                 <Text style={styles.emptyText}>
                   Erstelle ein Meetup oder Kurs, um die Community zu vernetzen.
@@ -414,111 +420,183 @@ export default function DiscoverScreen() {
                 keyExtractor={(item) => item.id}
                 renderItem={renderEvent}
                 contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
               />
             )
           )}
-        </>
+        </View>
       )}
     </View>
   );
 }
 
+// ── HELLES DESIGN-SYSTEM ──────────────────────────────────
+const COLORS = {
+  bg:        '#F5EFE6',
+  bgCard:    '#EDE4D3',
+  card:      'rgba(255,255,255,0.85)',
+  cardBorder:'rgba(200,169,110,0.25)',
+  gold:      '#C8A96E',
+  goldText:  '#9A7218',
+  goldDeep:  '#7A6014',
+  goldBg:    'rgba(200,169,110,0.12)',
+  textH:     '#1E180C',
+  textBody:  '#3E3020',
+  textSec:   '#7A6040',
+  textMuted: '#9A8870',
+  avatarBg:  'rgba(200,169,110,0.15)',
+  divider:   'rgba(139,105,20,0.12)',
+  glass:     'rgba(255,255,255,0.72)',
+  success:   '#2D8A56',
+  successBg: 'rgba(45,138,86,0.10)',
+  purple:    '#7A5FA0',
+  purpleBg:  'rgba(122,95,160,0.10)',
+  purpleBorder: 'rgba(122,95,160,0.30)',
+};
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#18161F' },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-  header: {
+  centerSmall: { paddingVertical: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+
+  // ── Fullscreen Karten-Platzhalter ──────────────────────
+  mapFull: {
+    flex: 1,
+    backgroundColor: COLORS.bgCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapPlaceholderIcon: { fontSize: 48, marginBottom: 12, opacity: 0.5 },
+  mapPlaceholderText: { fontSize: 12, color: COLORS.textMuted, letterSpacing: 1 },
+
+  // ── Floating Header ────────────────────────────────────
+  floatingHeader: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    zIndex: 10,
+    backgroundColor: 'rgba(245,239,230,0.88)',
+    paddingBottom: 4,
+  },
+  headerRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(200,169,110,0.08)',
+    paddingHorizontal: 20, paddingBottom: 8,
   },
-  headerIcon: { fontSize: 22, color: '#C8A96E' },
-  headerTitle: { fontSize: 11, letterSpacing: 4, color: '#C8A96E' },
-  searchContainer: { paddingHorizontal: 16, paddingVertical: 12 },
+  headerIcon: { fontSize: 22, color: COLORS.goldDeep },
+  headerTitle: { fontSize: 11, letterSpacing: 4, color: COLORS.goldDeep },
+
+  // ── Suche ──────────────────────────────────────────────
+  searchContainer: { paddingHorizontal: 16, paddingBottom: 8 },
   searchInput: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.1)',
+    backgroundColor: COLORS.glass,
+    borderWidth: 1, borderColor: COLORS.cardBorder,
     borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12,
-    color: '#F0EDE8', fontSize: 14,
+    color: COLORS.textH, fontSize: 14,
   },
 
-  // Karten-Platzhalter
-  mapPlaceholder: {
-    marginHorizontal: 16, marginBottom: 12, height: 160,
-    backgroundColor: '#2C2A35', borderRadius: 16,
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.1)',
-    alignItems: 'center', justifyContent: 'center',
+  // ── Such-Overlay (deckt Karte ab) ──────────────────────
+  searchOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: COLORS.bg,
+    zIndex: 5,
   },
-  mapPlaceholderIcon: { fontSize: 32, marginBottom: 8 },
-  mapPlaceholderText: { fontSize: 11, color: '#5A5450', letterSpacing: 1 },
 
-  // Segment Toggle
+  // ── Bottom Panel (schwebt ueber Karte) ─────────────────
+  bottomPanel: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    maxHeight: '55%',
+    backgroundColor: 'rgba(245,239,230,0.92)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 16,
+    zIndex: 5,
+    // Schatten
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+
+  // ── Segment Toggle ─────────────────────────────────────
   segmentRow: {
     flexDirection: 'row', gap: 8,
     paddingHorizontal: 16, marginBottom: 12,
   },
   segmentBtn: {
     flex: 1, paddingVertical: 10, borderRadius: 14,
-    backgroundColor: '#2C2A35', borderWidth: 1,
-    borderColor: 'rgba(200,169,110,0.1)',
+    backgroundColor: COLORS.card, borderWidth: 1,
+    borderColor: COLORS.cardBorder,
     alignItems: 'center',
   },
   segmentBtnActive: {
-    backgroundColor: 'rgba(200,169,110,0.12)',
-    borderColor: 'rgba(200,169,110,0.25)',
+    backgroundColor: COLORS.goldBg,
+    borderColor: 'rgba(200,169,110,0.45)',
   },
-  segmentText: { fontSize: 10, letterSpacing: 1, color: '#5A5450' },
-  segmentTextActive: { color: '#C8A96E' },
+  segmentText: { fontSize: 10, letterSpacing: 1, color: COLORS.textMuted },
+  segmentTextActive: { color: COLORS.goldDeep },
 
-  // Listen
-  listContent: { padding: 16 },
-  hintTitle: { fontSize: 20, fontWeight: '300', color: '#A8894E', marginBottom: 8, letterSpacing: 1 },
-  emptyText: { fontSize: 13, color: '#5A5450', textAlign: 'center' },
+  // ── Listen ─────────────────────────────────────────────
+  listContent: { paddingHorizontal: 16, paddingBottom: 16 },
+  hintTitle: { fontSize: 20, fontWeight: '300', color: COLORS.goldDeep, marginBottom: 8, letterSpacing: 1 },
+  emptyText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center' },
 
-  // Karten (User + Nearby)
+  // ── Karten (User + Nearby) ─────────────────────────────
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#2C2A35', borderRadius: 16, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: 'rgba(200,169,110,0.1)',
+    backgroundColor: COLORS.card, borderRadius: 16, padding: 14,
+    marginBottom: 10, borderWidth: 1, borderColor: COLORS.cardBorder,
+    // Leichter Schatten
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
   },
   avatar: {
     width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(200,169,110,0.12)',
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.2)',
+    backgroundColor: COLORS.avatarBg,
+    borderWidth: 1, borderColor: 'rgba(200,169,110,0.3)',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  avatarOrigin: { borderColor: 'rgba(200,169,110,0.5)' },
+  avatarOrigin: { borderColor: 'rgba(200,169,110,0.6)' },
   avatarImg: { width: 44, height: 44, borderRadius: 22 },
-  avatarText: { fontSize: 17, color: '#C8A96E', fontWeight: '300' },
+  avatarText: { fontSize: 17, color: COLORS.goldDeep, fontWeight: '300' },
   cardInfo: { flex: 1 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  cardName: { fontSize: 14, color: '#F0EDE8', fontWeight: '500' },
-  cardHandle: { fontSize: 12, color: '#5A5450', marginTop: 1 },
-  cardBio: { fontSize: 12, color: '#9A9080', marginTop: 2 },
-  cardMeta: { fontSize: 11, color: '#9A9080', marginTop: 2 },
+  cardName: { fontSize: 14, color: COLORS.textH, fontWeight: '500' },
+  cardHandle: { fontSize: 12, color: COLORS.textSec, marginTop: 1 },
+  cardBio: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  cardMeta: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
   originBadge: {
     paddingHorizontal: 5, paddingVertical: 1,
     borderRadius: 99, borderWidth: 1,
-    borderColor: 'rgba(168,137,78,0.3)', backgroundColor: 'rgba(168,137,78,0.1)',
+    borderColor: 'rgba(200,169,110,0.4)', backgroundColor: COLORS.goldBg,
   },
-  originBadgeText: { fontSize: 7, letterSpacing: 2, color: '#A8894E' },
+  originBadgeText: { fontSize: 7, letterSpacing: 2, color: COLORS.goldDeep },
 
-  // Action Buttons
+  // ── Action Buttons ─────────────────────────────────────
   actionBtn: {
     paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 99, borderWidth: 1,
-    borderColor: 'rgba(200,169,110,0.3)',
+    borderColor: 'rgba(200,169,110,0.4)',
   },
-  connectedBtn: { borderColor: 'rgba(82,183,136,0.3)', backgroundColor: 'rgba(82,183,136,0.08)' },
-  pendingBtn: { borderColor: 'rgba(200,169,110,0.15)' },
-  leaveBtn: { borderColor: 'rgba(90,84,80,0.3)' },
-  fullBtn: { borderColor: 'rgba(90,84,80,0.15)', backgroundColor: 'rgba(90,84,80,0.08)' },
-  actionBtnText: { fontSize: 8, letterSpacing: 2, color: '#C8A96E' },
-  actionBtnTextMuted: { color: '#5A5450' },
+  connectedBtn: { borderColor: 'rgba(45,138,86,0.3)', backgroundColor: 'rgba(45,138,86,0.08)' },
+  pendingBtn: { borderColor: 'rgba(200,169,110,0.25)' },
+  leaveBtn: { borderColor: 'rgba(139,105,20,0.2)' },
+  fullBtn: { borderColor: 'rgba(139,105,20,0.15)', backgroundColor: 'rgba(139,105,20,0.05)' },
+  actionBtnText: { fontSize: 8, letterSpacing: 2, color: COLORS.goldDeep },
+  actionBtnTextMuted: { color: COLORS.textMuted },
 
-  // Event Cards
+  // ── Event Cards ────────────────────────────────────────
   eventCard: {
-    backgroundColor: '#2C2A35', borderRadius: 16, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: 'rgba(200,169,110,0.1)',
+    backgroundColor: COLORS.card, borderRadius: 16, padding: 14,
+    marginBottom: 10, borderWidth: 1, borderColor: COLORS.cardBorder,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
   },
   eventHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
@@ -526,26 +604,26 @@ const styles = StyleSheet.create({
   },
   categoryBadge: {
     paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99,
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.3)',
-    backgroundColor: 'rgba(200,169,110,0.1)',
+    borderWidth: 1, borderColor: 'rgba(200,169,110,0.4)',
+    backgroundColor: COLORS.goldBg,
   },
   courseBadge: {
-    borderColor: 'rgba(155,114,207,0.3)',
-    backgroundColor: 'rgba(155,114,207,0.1)',
+    borderColor: COLORS.purpleBorder,
+    backgroundColor: COLORS.purpleBg,
   },
-  categoryText: { fontSize: 7, letterSpacing: 2, color: '#C8A96E' },
-  courseText: { color: '#9B72CF' },
-  eventDate: { fontSize: 11, color: '#5A5450' },
-  eventTitle: { fontSize: 14, color: '#F0EDE8', fontWeight: '500', marginBottom: 4 },
-  eventDesc: { fontSize: 12, color: '#5A5450', lineHeight: 18, marginBottom: 8 },
-  eventLocation: { fontSize: 11, color: '#9A9080', marginBottom: 10 },
+  categoryText: { fontSize: 7, letterSpacing: 2, color: COLORS.goldDeep },
+  courseText: { color: COLORS.purple },
+  eventDate: { fontSize: 11, color: COLORS.textMuted },
+  eventTitle: { fontSize: 14, color: COLORS.textH, fontWeight: '500', marginBottom: 4 },
+  eventDesc: { fontSize: 12, color: COLORS.textSec, lineHeight: 18, marginBottom: 8 },
+  eventLocation: { fontSize: 11, color: COLORS.textMuted, marginBottom: 10 },
   eventFooter: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', paddingTop: 10,
-    borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.06)',
+    borderTopWidth: 1, borderTopColor: COLORS.divider,
   },
   eventCreator: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  eventCreatorName: { fontSize: 11, color: '#5A5450' },
-  eventDot: { fontSize: 11, color: 'rgba(90,84,80,0.5)' },
-  eventParticipants: { fontSize: 11, color: '#5A5450' },
+  eventCreatorName: { fontSize: 11, color: COLORS.textSec },
+  eventDot: { fontSize: 11, color: COLORS.divider },
+  eventParticipants: { fontSize: 11, color: COLORS.textMuted },
 });
