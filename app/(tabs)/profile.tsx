@@ -267,10 +267,10 @@ export default function ProfileScreen() {
               placeholderTextColor="#5A5450"
               maxLength={60}
             />
-            <View style={styles.usernameRow}>
+            <View style={styles.inputWithIcon}>
               <Text style={styles.atSign}>@</Text>
               <TextInput
-                style={[styles.input, { flex: 1 }]}
+                style={styles.inputInner}
                 value={form.username}
                 onChangeText={(v) => setForm((f) => ({ ...f, username: v.toLowerCase().replace(/[^a-z0-9_]/g, '') }))}
                 placeholder="username"
@@ -314,32 +314,29 @@ export default function ProfileScreen() {
             multiline
             maxLength={300}
           />
-          <View style={styles.locationRow}>
+          <View style={styles.inputWithIcon}>
             <Icon name="map-pin" size={14} color="#C8A96E" />
             <TextInput
-              style={[styles.input, { flex: 1 }]}
+              style={styles.inputInner}
               value={form.location}
               onChangeText={(v) => setForm((f) => ({ ...f, location: v, location_lat: null, location_lng: null }))}
               placeholder="Ort (z.B. Muenchen – Schwabing)"
               placeholderTextColor="#5A5450"
               maxLength={80}
             />
+            <TouchableOpacity
+              onPress={handleDetectLocation}
+              disabled={detectingLocation}
+              activeOpacity={0.7}
+              style={{ padding: 4 }}
+            >
+              {detectingLocation ? (
+                <ActivityIndicator color="#C8A96E" size="small" />
+              ) : (
+                <Icon name="current-location" size={16} color="#C8A96E" />
+              )}
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={[styles.detectLocationBtn, detectingLocation && styles.detectLocationBtnDisabled]}
-            onPress={handleDetectLocation}
-            disabled={detectingLocation}
-            activeOpacity={0.7}
-          >
-            {detectingLocation ? (
-              <ActivityIndicator color="#C8A96E" size="small" />
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Icon name="current-location" size={14} color="#C8A96E" />
-                <Text style={styles.detectLocationText}>STANDORT ERKENNEN</Text>
-              </View>
-            )}
-          </TouchableOpacity>
           {form.location_lat && (
             <Text style={styles.locationHint}>Standort gesetzt (Stadtteil-Genauigkeit)</Text>
           )}
@@ -493,13 +490,20 @@ const styles = StyleSheet.create({
     borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10,
     color: '#F0EDE8', fontSize: 14,
   },
-  usernameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  inputWithIcon: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: 'rgba(200,169,110,0.2)',
+    borderRadius: 8, paddingHorizontal: 14, paddingVertical: 0,
+  },
+  inputInner: {
+    flex: 1, color: '#F0EDE8', fontSize: 14,
+    paddingVertical: 10,
+  },
   atSign: { color: '#5A5450', fontSize: 14 },
 
   editBioSection: { gap: 10, marginBottom: 16 },
   bioInput: { minHeight: 80, textAlignVertical: 'top' },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  locationIcon: { fontSize: 14 },
 
   bio: {
     color: '#c8c0b8', fontSize: 14, lineHeight: 22,
@@ -553,13 +557,5 @@ const styles = StyleSheet.create({
   },
   logoutText: { fontSize: 10, letterSpacing: 3, color: '#5A5450' },
 
-  detectLocationBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 10, borderRadius: 12,
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.2)',
-    backgroundColor: 'rgba(200,169,110,0.05)',
-  },
-  detectLocationBtnDisabled: { opacity: 0.5 },
-  detectLocationText: { fontSize: 9, letterSpacing: 2, color: '#C8A96E' },
   locationHint: { fontSize: 11, color: '#5A5450', marginLeft: 28 },
 });
