@@ -2,14 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, Image, RefreshControl, Modal,
-  TextInput, ActivityIndicator,
+  TextInput, ActivityIndicator, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/auth';
+import { useChatStore } from '../../store/chat';
 import type { ChannelOverview } from '../../types/chat';
 import type { Connection } from '../../types/circles';
-import { fetchChannels, createDirectChannel } from '../../lib/chat';
+import { fetchChannels, createDirectChannel, createGroupChannel } from '../../lib/chat';
 import { getConnections } from '../../lib/circles';
 import { Icon } from '../../components/Icon';
 
@@ -40,6 +41,7 @@ function getMessagePreview(channel: ChannelOverview): string {
 export default function ChatTab() {
   const router = useRouter();
   const session = useAuthStore((s) => s.session);
+  const setTotalUnread = useChatStore((s) => s.setTotalUnread);
   const [channels, setChannels] = useState<ChannelOverview[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,12 +51,14 @@ export default function ChatTab() {
     try {
       const data = await fetchChannels();
       setChannels(data);
+      const total = data.reduce((sum, ch) => sum + ch.unread_count, 0);
+      setTotalUnread(total);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setTotalUnread]);
 
   useEffect(() => {
     loadChannels();
@@ -191,8 +195,13 @@ function NewChatModal({
 }) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
+  const [mode, setMode] = useState<'direct' | 'group'>('direct');
+
+  // Gruppen-Felder
+  const [groupName, setGroupName] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const loadConnections = useCallback(async () => {
     try {
@@ -208,19 +217,48 @@ function NewChatModal({
   useEffect(() => {
     if (visible) {
       setLoading(true);
+      setSearch('');
+      setMode('direct');
+      setGroupName('');
+      setSelectedIds(new Set());
       loadConnections();
     }
   }, [visible, loadConnections]);
 
-  const handleStartChat = async (partnerId: string) => {
-    setCreating(partnerId);
+  const handleStartDirect = async (partnerId: string) => {
+    setCreating(true);
     try {
       const result = await createDirectChannel(partnerId);
       onCreated(result.id);
     } catch (e) {
       console.error(e);
-      setCreating(null);
+    } finally {
+      setCreating(false);
     }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!groupName.trim() || selectedIds.size < 2) return;
+    setCreating(true);
+    try {
+      const result = await createGroupChannel({
+        name: groupName.trim(),
+        member_ids: Array.from(selectedIds),
+      });
+      onCreated(result.id);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   };
 
   const filtered = connections.filter((c) => {
@@ -240,6 +278,37 @@ function NewChatModal({
               <Icon name="x" size={20} color="#5A5450" />
             </TouchableOpacity>
           </View>
+
+          {/* Modus-Toggle */}
+          <View style={styles.modeToggle}>
+            <Pressable
+              style={[styles.modeBtn, mode === 'direct' && styles.modeBtnActive]}
+              onPress={() => setMode('direct')}
+            >
+              <Text style={[styles.modeBtnText, mode === 'direct' && styles.modeBtnTextActive]}>
+                Direkt
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.modeBtn, mode === 'group' && styles.modeBtnActive]}
+              onPress={() => setMode('group')}
+            >
+              <Text style={[styles.modeBtnText, mode === 'group' && styles.modeBtnTextActive]}>
+                Gruppe
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* Gruppenname (nur im Gruppen-Modus) */}
+          {mode === 'group' && (
+            <TextInput
+              style={[styles.searchInput, { marginBottom: 0 }]}
+              value={groupName}
+              onChangeText={setGroupName}
+              placeholder="Gruppenname ..."
+              placeholderTextColor="#5A5450"
+            />
+          )}
 
           {/* Suche */}
           <TextInput
@@ -262,16 +331,42 @@ function NewChatModal({
                 const profile = connection.profile;
                 const name = profile.display_name ?? profile.username ?? 'Anonym';
                 const initial = name.slice(0, 1).toUpperCase();
-                const isCreating = creating === profile.id;
+                const isSelected = selectedIds.has(profile.id);
 
+                if (mode === 'direct') {
+                  return (
+                    <TouchableOpacity
+                      style={[styles.contactRow, creating && { opacity: 0.5 }]}
+                      onPress={() => handleStartDirect(profile.id)}
+                      disabled={creating}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.contactAvatar}>
+                        {profile.avatar_url ? (
+                          <Image source={{ uri: profile.avatar_url }} style={styles.contactAvatarImg} />
+                        ) : (
+                          <Text style={styles.contactAvatarText}>{initial}</Text>
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.contactName}>{name}</Text>
+                        {profile.username && (
+                          <Text style={styles.contactUsername}>@{profile.username}</Text>
+                        )}
+                      </View>
+                      <Icon name="message-circle" size={16} color="#C8A96E" />
+                    </TouchableOpacity>
+                  );
+                }
+
+                // Gruppen-Modus: Multi-Select
                 return (
                   <TouchableOpacity
-                    style={[styles.contactRow, isCreating && { opacity: 0.5 }]}
-                    onPress={() => handleStartChat(profile.id)}
-                    disabled={isCreating}
+                    style={styles.contactRow}
+                    onPress={() => toggleSelect(profile.id)}
                     activeOpacity={0.7}
                   >
-                    <View style={styles.contactAvatar}>
+                    <View style={[styles.contactAvatar, isSelected && styles.contactAvatarSelected]}>
                       {profile.avatar_url ? (
                         <Image source={{ uri: profile.avatar_url }} style={styles.contactAvatarImg} />
                       ) : (
@@ -284,7 +379,7 @@ function NewChatModal({
                         <Text style={styles.contactUsername}>@{profile.username}</Text>
                       )}
                     </View>
-                    <Icon name="message-circle" size={16} color="#C8A96E" />
+                    {isSelected && <Icon name="check" size={16} color="#C8A96E" />}
                   </TouchableOpacity>
                 );
               }}
@@ -294,6 +389,27 @@ function NewChatModal({
                 </Text>
               }
             />
+          )}
+
+          {/* Gruppe erstellen Button */}
+          {mode === 'group' && (
+            <TouchableOpacity
+              style={[
+                styles.createGroupBtn,
+                (selectedIds.size < 2 || !groupName.trim() || creating) && styles.createGroupBtnDisabled,
+              ]}
+              onPress={handleCreateGroup}
+              disabled={selectedIds.size < 2 || !groupName.trim() || creating}
+              activeOpacity={0.7}
+            >
+              {creating ? (
+                <ActivityIndicator size="small" color="#1A1A1A" />
+              ) : (
+                <Text style={styles.createGroupBtnText}>
+                  Gruppe erstellen{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+                </Text>
+              )}
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -391,4 +507,29 @@ const styles = StyleSheet.create({
   contactAvatarText: { fontSize: 14, color: '#C8A96E' },
   contactName: { fontSize: 14, color: '#F0EDE8', fontWeight: '400' },
   contactUsername: { fontSize: 11, color: '#5A5450' },
+  contactAvatarSelected: {
+    borderColor: '#C8A96E', borderWidth: 2,
+  },
+
+  // Modus-Toggle
+  modeToggle: {
+    flexDirection: 'row', marginHorizontal: 16, marginTop: 12, marginBottom: 4,
+    borderRadius: 8, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(200,169,110,0.15)',
+  },
+  modeBtn: {
+    flex: 1, paddingVertical: 8, alignItems: 'center',
+  },
+  modeBtnActive: { backgroundColor: 'rgba(200,169,110,0.12)' },
+  modeBtnText: { fontSize: 12, color: '#5A5450', letterSpacing: 1, textTransform: 'uppercase' },
+  modeBtnTextActive: { color: '#C8A96E' },
+
+  // Gruppe erstellen Button
+  createGroupBtn: {
+    marginHorizontal: 16, marginTop: 8, marginBottom: 4,
+    paddingVertical: 12, borderRadius: 24,
+    backgroundColor: '#C8A96E', alignItems: 'center',
+  },
+  createGroupBtnDisabled: { backgroundColor: 'rgba(200,169,110,0.3)' },
+  createGroupBtnText: { fontSize: 13, color: '#1A1A1A', fontWeight: '600', letterSpacing: 1 },
 });

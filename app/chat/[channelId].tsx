@@ -2,20 +2,31 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, Image, TextInput, KeyboardAvoidingView,
-  Platform, ActivityIndicator,
+  Platform, ActivityIndicator, Modal, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/auth';
-import type { ChannelDetail, Message } from '../../types/chat';
-import { fetchChannel, fetchMessages, sendMessage, markChannelAsRead, deleteMessage as apiDeleteMessage } from '../../lib/chat';
+import { useChatStore } from '../../store/chat';
+import type { ChannelDetail, Message, ReactionSummary } from '../../types/chat';
+import {
+  fetchChannel, fetchMessages, sendMessage, markChannelAsRead,
+  deleteMessage as apiDeleteMessage, editMessage as apiEditMessage,
+  addReaction, removeReaction,
+} from '../../lib/chat';
 import { supabase } from '../../lib/supabase';
 import { Icon } from '../../components/Icon';
+
+// Häufig verwendete Emojis für den Reaktions-Picker
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '👏', '🙏', '✨', '🔥', '🕊️', '🌿', '💛'];
+
+type ReactionsMap = Record<string, ReactionSummary[]>;
 
 export default function ChatRoomScreen() {
   const { channelId } = useLocalSearchParams<{ channelId: string }>();
   const router = useRouter();
   const session = useAuthStore((s) => s.session);
+  const setTotalUnread = useChatStore((s) => s.setTotalUnread);
   const userId = session?.user?.id;
 
   const [channel, setChannel] = useState<ChannelDetail | null>(null);
@@ -27,6 +38,13 @@ export default function ChatRoomScreen() {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+
+  // Action Sheet, Edit, Reactions
+  const [actionMsg, setActionMsg] = useState<Message | null>(null);
+  const [editingMsg, setEditingMsg] = useState<Message | null>(null);
+  const [emojiPickerMsg, setEmojiPickerMsg] = useState<Message | null>(null);
+  const [reactions, setReactions] = useState<ReactionsMap>({});
+
   const flatListRef = useRef<FlatList>(null);
 
   // ── Daten laden ───────────────────────────────────────────
@@ -42,6 +60,9 @@ export default function ChatRoomScreen() {
       setHasMore(msgs.hasMore);
       setPage(1);
       await markChannelAsRead(channelId);
+      setTotalUnread(0); // Kanal wurde geöffnet – lokaler Reset
+      // Reactions für geladene Nachrichten laden
+      loadReactionsForMessages(msgs.data.map((m) => m.id));
     } catch (e) {
       console.error(e);
     } finally {
@@ -52,6 +73,39 @@ export default function ChatRoomScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // ── Reactions batch laden (via Supabase direkt) ──────────
+  const loadReactionsForMessages = useCallback(async (messageIds: string[]) => {
+    if (messageIds.length === 0) return;
+    try {
+      const { data } = await supabase
+        .from('reactions')
+        .select('message_id, emoji, user_id')
+        .in('message_id', messageIds);
+
+      if (!data) return;
+
+      // Gruppieren nach message_id + emoji
+      const map: ReactionsMap = {};
+      for (const row of data) {
+        if (!map[row.message_id]) map[row.message_id] = [];
+        const existing = map[row.message_id].find((r) => r.emoji === row.emoji);
+        if (existing) {
+          existing.count += 1;
+          if (row.user_id === userId) existing.has_reacted = true;
+        } else {
+          map[row.message_id].push({
+            emoji: row.emoji,
+            count: 1,
+            has_reacted: row.user_id === userId,
+          });
+        }
+      }
+      setReactions((prev) => ({ ...prev, ...map }));
+    } catch (e) {
+      console.error('Reactions laden fehlgeschlagen:', e);
+    }
+  }, [userId]);
 
   // ── Realtime Subscription ─────────────────────────────────
   useEffect(() => {
@@ -71,12 +125,64 @@ export default function ChatRoomScreen() {
           markChannelAsRead(channelId).catch(() => {});
         },
       )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages', filter: `channel_id=eq.${channelId}` },
+        (payload) => {
+          const updated = payload.new as Message;
+          setMessages((prev) => prev.map((m) => m.id === updated.id ? { ...m, ...updated } : m));
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'reactions' },
+        (payload) => {
+          const row = payload.new as { message_id: string; emoji: string; user_id: string };
+          setReactions((prev) => {
+            const msgReactions = [...(prev[row.message_id] ?? [])];
+            const existing = msgReactions.find((r) => r.emoji === row.emoji);
+            if (existing) {
+              return {
+                ...prev,
+                [row.message_id]: msgReactions.map((r) =>
+                  r.emoji === row.emoji
+                    ? { ...r, count: r.count + 1, has_reacted: r.has_reacted || row.user_id === userId }
+                    : r,
+                ),
+              };
+            }
+            return {
+              ...prev,
+              [row.message_id]: [...msgReactions, { emoji: row.emoji, count: 1, has_reacted: row.user_id === userId }],
+            };
+          });
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'reactions' },
+        (payload) => {
+          const row = payload.old as { message_id: string; emoji: string; user_id: string };
+          setReactions((prev) => {
+            const msgReactions = prev[row.message_id];
+            if (!msgReactions) return prev;
+            const updated = msgReactions
+              .map((r) =>
+                r.emoji === row.emoji
+                  ? { ...r, count: r.count - 1, has_reacted: row.user_id === userId ? false : r.has_reacted }
+                  : r,
+              )
+              .filter((r) => r.count > 0);
+            return { ...prev, [row.message_id]: updated };
+          });
+        },
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(sub);
     };
-  }, [channelId]);
+  }, [channelId, userId]);
 
   // ── Aeltere Nachrichten laden ─────────────────────────────
   const loadOlderMessages = async () => {
@@ -88,6 +194,7 @@ export default function ChatRoomScreen() {
       setMessages((prev) => [...result.data, ...prev]);
       setHasMore(result.hasMore);
       setPage(nextPage);
+      loadReactionsForMessages(result.data.map((m) => m.id));
     } catch (e) {
       console.error(e);
     } finally {
@@ -117,10 +224,62 @@ export default function ChatRoomScreen() {
     }
   };
 
+  // ── Nachricht bearbeiten ──────────────────────────────────
+  const handleSaveEdit = async () => {
+    if (!editingMsg || !text.trim() || sending) return;
+    setSending(true);
+    try {
+      const updated = await apiEditMessage(editingMsg.id, text.trim());
+      setMessages((prev) => prev.map((m) => m.id === updated.id ? { ...m, ...updated } : m));
+      setText('');
+      setEditingMsg(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const startEditing = (msg: Message) => {
+    setActionMsg(null);
+    setEditingMsg(msg);
+    setText(msg.content ?? '');
+  };
+
+  const cancelEditing = () => {
+    setEditingMsg(null);
+    setText('');
+  };
+
+  // ── Nachricht löschen ─────────────────────────────────────
   const handleDelete = async (msgId: string) => {
+    setActionMsg(null);
     try {
       await apiDeleteMessage(msgId);
       setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // ── Reactions ─────────────────────────────────────────────
+  const handleReaction = (msg: Message) => {
+    setActionMsg(null);
+    setEmojiPickerMsg(msg);
+  };
+
+  const handleEmojiSelect = async (emoji: string) => {
+    if (!emojiPickerMsg) return;
+    const msgId = emojiPickerMsg.id;
+    setEmojiPickerMsg(null);
+
+    const existing = reactions[msgId]?.find((r) => r.emoji === emoji);
+    try {
+      if (existing?.has_reacted) {
+        await removeReaction(msgId, emoji);
+      } else {
+        await addReaction(msgId, emoji);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -148,8 +307,8 @@ export default function ChatRoomScreen() {
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showAuthor = !isOwn && (!prevMsg || prevMsg.user_id !== msg.user_id);
     const authorName = msg.author?.display_name ?? msg.author?.username ?? 'Anonym';
+    const msgReactions = reactions[msg.id] ?? [];
 
-    // System-Nachricht
     if (msg.type === 'system') {
       return (
         <View style={styles.systemRow}>
@@ -167,7 +326,7 @@ export default function ChatRoomScreen() {
 
           {/* Reply Preview */}
           {msg.reply_message && (
-            <View style={styles.replyPreview}>
+            <View style={[styles.replyPreview, isOwn && { borderLeftColor: 'rgba(200,169,110,0.5)' }]}>
               <Text style={styles.replyAuthor}>
                 {msg.reply_message.author?.display_name ?? 'Nachricht'}
               </Text>
@@ -180,14 +339,7 @@ export default function ChatRoomScreen() {
           <TouchableOpacity
             style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}
             activeOpacity={0.8}
-            onLongPress={() => {
-              if (isOwn && msg.type === 'text') {
-                // Einfaches Loeschen bei Long Press
-                handleDelete(msg.id);
-              } else if (!isOwn) {
-                setReplyTo(msg);
-              }
-            }}
+            onLongPress={() => setActionMsg(msg)}
           >
             <Text style={styles.bubbleContent}>{msg.content}</Text>
             <View style={[styles.bubbleMeta, isOwn && { alignSelf: 'flex-end' }]}>
@@ -197,9 +349,39 @@ export default function ChatRoomScreen() {
               </Text>
             </View>
           </TouchableOpacity>
+
+          {/* Reactions */}
+          {msgReactions.length > 0 && (
+            <View style={[styles.reactionsRow, isOwn && { justifyContent: 'flex-end' }]}>
+              {msgReactions.map((r) => (
+                <TouchableOpacity
+                  key={r.emoji}
+                  style={[styles.reactionChip, r.has_reacted && styles.reactionChipOwn]}
+                  onPress={() => handleEmojiSelectDirect(msg.id, r.emoji, r.has_reacted)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.reactionEmoji}>{r.emoji}</Text>
+                  {r.count > 1 && <Text style={styles.reactionCount}>{r.count}</Text>}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </View>
     );
+  };
+
+  // Reaktion direkt aus dem Chip toggeln
+  const handleEmojiSelectDirect = async (msgId: string, emoji: string, hasReacted: boolean) => {
+    try {
+      if (hasReacted) {
+        await removeReaction(msgId, emoji);
+      } else {
+        await addReaction(msgId, emoji);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   if (loading) {
@@ -220,7 +402,7 @@ export default function ChatRoomScreen() {
           <Icon name="arrow-left" size={20} color="#5A5450" />
         </TouchableOpacity>
 
-        <View style={[styles.headerAvatar]}>
+        <View style={styles.headerAvatar}>
           {getPartnerAvatar() ? (
             <Image source={{ uri: getPartnerAvatar()! }} style={styles.headerAvatarImg} />
           ) : channel?.type === 'direct' ? (
@@ -254,17 +436,15 @@ export default function ChatRoomScreen() {
           contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8 }}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
           onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onScroll={(e) => {
+            if (e.nativeEvent.contentOffset.y < 80 && hasMore && !loadingMore) {
+              loadOlderMessages();
+            }
+          }}
+          scrollEventThrottle={400}
           ListHeaderComponent={
-            hasMore ? (
-              <TouchableOpacity
-                onPress={loadOlderMessages}
-                disabled={loadingMore}
-                style={styles.loadMoreBtn}
-              >
-                <Text style={styles.loadMoreText}>
-                  {loadingMore ? '...' : 'Aeltere laden'}
-                </Text>
-              </TouchableOpacity>
+            hasMore && loadingMore ? (
+              <ActivityIndicator color="#C8A96E" style={{ marginBottom: 8 }} />
             ) : null
           }
         />
@@ -282,21 +462,34 @@ export default function ChatRoomScreen() {
           </View>
         )}
 
+        {/* Edit Banner */}
+        {editingMsg && (
+          <View style={styles.replyBanner}>
+            <Icon name="edit" size={12} color="#C8A96E" />
+            <Text style={styles.replyBannerText} numberOfLines={1}>
+              Nachricht bearbeiten
+            </Text>
+            <TouchableOpacity onPress={cancelEditing}>
+              <Icon name="x" size={14} color="#5A5450" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Input */}
         <View style={styles.inputRow}>
           <TextInput
             style={styles.input}
             value={text}
             onChangeText={setText}
-            placeholder="Nachricht schreiben ..."
+            placeholder={editingMsg ? 'Nachricht bearbeiten ...' : 'Nachricht schreiben ...'}
             placeholderTextColor="#5A5450"
             maxLength={5000}
             returnKeyType="send"
-            onSubmitEditing={handleSend}
+            onSubmitEditing={editingMsg ? handleSaveEdit : handleSend}
           />
           <TouchableOpacity
             style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
-            onPress={handleSend}
+            onPress={editingMsg ? handleSaveEdit : handleSend}
             disabled={!text.trim() || sending}
             activeOpacity={0.7}
           >
@@ -304,9 +497,144 @@ export default function ChatRoomScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Action Sheet Modal */}
+      <MessageActionSheet
+        message={actionMsg}
+        isOwn={actionMsg?.user_id === userId}
+        onClose={() => setActionMsg(null)}
+        onReply={(msg) => { setActionMsg(null); setReplyTo(msg); }}
+        onEdit={startEditing}
+        onDelete={(msgId) => handleDelete(msgId)}
+        onReact={handleReaction}
+      />
+
+      {/* Emoji Picker Modal */}
+      <EmojiPickerModal
+        visible={!!emojiPickerMsg}
+        onClose={() => setEmojiPickerMsg(null)}
+        onSelect={handleEmojiSelect}
+        existingReactions={emojiPickerMsg ? (reactions[emojiPickerMsg.id] ?? []) : []}
+      />
     </SafeAreaView>
   );
 }
+
+// ── MessageActionSheet ─────────────────────────────────────────
+
+function MessageActionSheet({
+  message, isOwn, onClose, onReply, onEdit, onDelete, onReact,
+}: {
+  message: Message | null;
+  isOwn?: boolean;
+  onClose: () => void;
+  onReply: (msg: Message) => void;
+  onEdit: (msg: Message) => void;
+  onDelete: (msgId: string) => void;
+  onReact: (msg: Message) => void;
+}) {
+  if (!message) return null;
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.sheetOverlay} onPress={onClose}>
+        <Pressable style={styles.sheetContent}>
+          {/* Reagieren */}
+          <TouchableOpacity
+            style={styles.sheetAction}
+            onPress={() => onReact(message)}
+            activeOpacity={0.7}
+          >
+            <Icon name="face-smile" size={18} color="#C8A96E" />
+            <Text style={styles.sheetActionText}>Reagieren</Text>
+          </TouchableOpacity>
+
+          {/* Antworten */}
+          <TouchableOpacity
+            style={styles.sheetAction}
+            onPress={() => onReply(message)}
+            activeOpacity={0.7}
+          >
+            <Icon name="corner-up-left" size={18} color="#C8A96E" />
+            <Text style={styles.sheetActionText}>Antworten</Text>
+          </TouchableOpacity>
+
+          {/* Bearbeiten – nur eigene Textnachrichten */}
+          {isOwn && message.type === 'text' && (
+            <TouchableOpacity
+              style={styles.sheetAction}
+              onPress={() => onEdit(message)}
+              activeOpacity={0.7}
+            >
+              <Icon name="edit" size={18} color="#C8A96E" />
+              <Text style={styles.sheetActionText}>Bearbeiten</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Löschen – nur eigene Nachrichten */}
+          {isOwn && (
+            <TouchableOpacity
+              style={[styles.sheetAction, styles.sheetActionDanger]}
+              onPress={() => onDelete(message.id)}
+              activeOpacity={0.7}
+            >
+              <Icon name="trash" size={18} color="#E05A5A" />
+              <Text style={[styles.sheetActionText, { color: '#E05A5A' }]}>Löschen</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Abbrechen */}
+          <TouchableOpacity
+            style={[styles.sheetAction, { marginTop: 4, borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.08)' }]}
+            onPress={onClose}
+            activeOpacity={0.7}
+          >
+            <Icon name="x" size={18} color="#5A5450" />
+            <Text style={[styles.sheetActionText, { color: '#5A5450' }]}>Schließen</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── EmojiPickerModal ───────────────────────────────────────────
+
+function EmojiPickerModal({
+  visible, onClose, onSelect, existingReactions,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (emoji: string) => void;
+  existingReactions: ReactionSummary[];
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.sheetOverlay} onPress={onClose}>
+        <Pressable style={styles.emojiPickerContent}>
+          <Text style={styles.emojiPickerTitle}>Reaktion wählen</Text>
+          <View style={styles.emojiGrid}>
+            {QUICK_EMOJIS.map((emoji) => {
+              const hasReacted = existingReactions.some((r) => r.emoji === emoji && r.has_reacted);
+              return (
+                <TouchableOpacity
+                  key={emoji}
+                  style={[styles.emojiBtn, hasReacted && styles.emojiBtnActive]}
+                  onPress={() => onSelect(emoji)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.emojiText}>{emoji}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── Styles ─────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#1A1A1A' },
@@ -330,13 +658,6 @@ const styles = StyleSheet.create({
   headerSub: { fontSize: 10, color: '#5A5450', letterSpacing: 1, textTransform: 'uppercase' },
 
   // Messages
-  loadMoreBtn: {
-    alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 6,
-    borderRadius: 12, borderWidth: 1, borderColor: 'rgba(200,169,110,0.15)',
-    marginBottom: 8,
-  },
-  loadMoreText: { fontSize: 10, color: '#5A5450', letterSpacing: 1, textTransform: 'uppercase' },
-
   systemRow: { alignItems: 'center', paddingVertical: 8 },
   systemText: {
     fontSize: 10, color: '#5A5450', letterSpacing: 1, textTransform: 'uppercase',
@@ -372,7 +693,26 @@ const styles = StyleSheet.create({
   replyAuthor: { fontSize: 10, color: '#C8A96E' },
   replyText: { fontSize: 10, color: '#5A5450' },
 
-  // Reply Banner
+  // Reactions
+  reactionsRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 4,
+    marginTop: 4, paddingHorizontal: 2,
+  },
+  reactionChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 7, paddingVertical: 3,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  reactionChipOwn: {
+    backgroundColor: 'rgba(200,169,110,0.15)',
+    borderColor: 'rgba(200,169,110,0.3)',
+  },
+  reactionEmoji: { fontSize: 13 },
+  reactionCount: { fontSize: 10, color: '#9A9080' },
+
+  // Reply / Edit Banner
   replyBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 16, paddingVertical: 8,
@@ -399,4 +739,46 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: 'rgba(200,169,110,0.15)' },
+
+  // Action Sheet
+  sheetOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheetContent: {
+    backgroundColor: '#1E1C26',
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingBottom: 32, paddingTop: 8,
+  },
+  sheetAction: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingHorizontal: 24, paddingVertical: 14,
+  },
+  sheetActionDanger: {},
+  sheetActionText: { fontSize: 15, color: '#F0EDE8', fontWeight: '400' },
+
+  // Emoji Picker
+  emojiPickerContent: {
+    backgroundColor: '#1E1C26',
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingBottom: 32, paddingTop: 16, paddingHorizontal: 16,
+  },
+  emojiPickerTitle: {
+    fontSize: 12, color: '#5A5450', letterSpacing: 2,
+    textTransform: 'uppercase', textAlign: 'center', marginBottom: 16,
+  },
+  emojiGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8,
+  },
+  emojiBtn: {
+    width: 52, height: 52, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+  },
+  emojiBtnActive: {
+    backgroundColor: 'rgba(200,169,110,0.15)',
+    borderColor: 'rgba(200,169,110,0.3)',
+  },
+  emojiText: { fontSize: 26 },
 });

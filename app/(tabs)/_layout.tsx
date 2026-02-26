@@ -1,11 +1,14 @@
 import { Tabs } from 'expo-router';
 import { Icon, type IconName } from '../../components/Icon';
+import { useChatStore } from '../../store/chat';
 
 function TabBarIcon({ name, color }: { name: IconName; color: string }) {
   return <Icon name={name} size={20} color={color} />;
 }
 
 export default function TabsLayout() {
+  const totalUnread = useChatStore((s) => s.totalUnread);
+
   return (
     <Tabs
       screenOptions={{
@@ -53,6 +56,16 @@ export default function TabsLayout() {
         options={{
           title: 'Chat',
           tabBarIcon: ({ color }) => <TabBarIcon name="message-circle" color={color} />,
+          tabBarBadge: totalUnread > 0 ? (totalUnread > 99 ? '99+' : totalUnread) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#C8A96E',
+            color: '#1A1A1A',
+            fontSize: 9,
+            fontWeight: '700',
+            minWidth: 16,
+            height: 16,
+            lineHeight: 16,
+          },
         }}
       />
       <Tabs.Screen

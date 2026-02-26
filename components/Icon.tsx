@@ -23,7 +23,12 @@ export type IconName =
   | 'check'
   | 'edit'
   | 'map'
-  | 'search';
+  | 'search'
+  | 'arrow-left'
+  | 'send'
+  | 'corner-up-left'
+  | 'face-smile'
+  | 'trash';
 
 interface IconProps {
   name: IconName;
@@ -148,6 +153,42 @@ const paths: Record<IconName, React.ReactNode> = {
     <>
       <Path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
       <Path d="M21 21l-6 -6" />
+    </>
+  ),
+  'arrow-left': (
+    <>
+      <Path d="M5 12l14 0" />
+      <Path d="M5 12l6 6" />
+      <Path d="M5 12l6 -6" />
+    </>
+  ),
+  send: (
+    <>
+      <Path d="M10 14l11 -11" />
+      <Path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5" />
+    </>
+  ),
+  'corner-up-left': (
+    <>
+      <Path d="M14 9l-4 -4l4 -4" />
+      <Path d="M10 5h5a6 6 0 0 1 6 6v2" />
+    </>
+  ),
+  'face-smile': (
+    <>
+      <Path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+      <Path d="M9 10l.01 0" />
+      <Path d="M15 10l.01 0" />
+      <Path d="M9.5 15a3.5 3.5 0 0 0 5 0" />
+    </>
+  ),
+  trash: (
+    <>
+      <Path d="M4 7l16 0" />
+      <Path d="M10 11l0 6" />
+      <Path d="M14 11l0 6" />
+      <Path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+      <Path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
     </>
   ),
 };
