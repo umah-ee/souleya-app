@@ -24,6 +24,7 @@ import SeedsTransferModal from '../../components/chat/SeedsTransferModal';
 import GroupInfoSheet from '../../components/chat/GroupInfoSheet';
 import ImageGrid from '../../components/shared/ImageGrid';
 import ChallengeCard from '../../components/challenges/ChallengeCard';
+import CreateChallengeModal from '../../components/challenges/CreateChallengeModal';
 import { fetchChallenge } from '../../lib/challenges';
 import type { Challenge } from '../../types/challenges';
 
@@ -59,6 +60,7 @@ export default function ChatRoomScreen() {
   // Neue Features: Polls, Seeds, Images, GroupInfo
   const [showPollForm, setShowPollForm] = useState(false);
   const [showSeedsModal, setShowSeedsModal] = useState(false);
+  const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -766,6 +768,15 @@ export default function ChatRoomScreen() {
             <Icon name="seedling" size={18} color={colors.textMuted} />
           </TouchableOpacity>
 
+          {/* Challenge Button */}
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => setShowChallengeModal(true)}
+            activeOpacity={0.7}
+          >
+            <Icon name="target" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+
           <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
             value={text}
@@ -828,6 +839,14 @@ export default function ChatRoomScreen() {
           onSent={handleSeedsSent}
         />
       )}
+
+      {/* Challenge erstellen Modal */}
+      <CreateChallengeModal
+        visible={showChallengeModal}
+        channelId={channelId}
+        onClose={() => setShowChallengeModal(false)}
+        onCreated={() => setShowChallengeModal(false)}
+      />
 
       {/* Group Info Sheet */}
       {channel && userId && isGroupChannel && (

@@ -12,6 +12,7 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onCreated: (challenge: Challenge) => void;
+  channelId?: string;
 }
 
 const EMOJI_PRESETS = [
@@ -23,7 +24,7 @@ const EMOJI_PRESETS = [
 
 const DURATION_PRESETS = [7, 14, 21, 30, 90];
 
-export default function CreateChallengeModal({ visible, onClose, onCreated }: Props) {
+export default function CreateChallengeModal({ visible, onClose, onCreated, channelId }: Props) {
   const colors = useThemeStore((s) => s.colors);
 
   const [title, setTitle] = useState('');
@@ -61,6 +62,7 @@ export default function CreateChallengeModal({ visible, onClose, onCreated }: Pr
       description: description.trim() || undefined,
       emoji: selectedEmoji,
       duration_days: durationDays,
+      channel_id: channelId,
     };
 
     setSaving(true);
