@@ -445,11 +445,11 @@ export default function DiscoverScreen() {
             {PLACE_TAGS.slice(0, 15).map((tag) => (
               <TouchableOpacity
                 key={tag}
-                style={[styles.tagFilterBtn, { borderColor: colors.divider }, activeTags.includes(tag) && { backgroundColor: colors.goldBg, borderColor: colors.goldBorder }]}
+                style={[styles.tagFilterBtn, { borderColor: colors.glassBorder, backgroundColor: colors.glass }, activeTags.includes(tag) && { backgroundColor: colors.gold, borderColor: colors.gold }]}
                 onPress={() => toggleTag(tag)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.tagFilterText, { color: colors.textMuted }, activeTags.includes(tag) && { color: colors.goldDeep }]}>{tag}</Text>
+                <Text style={[styles.tagFilterText, { color: colors.textSec || colors.textMuted }, activeTags.includes(tag) && { color: colors.textOnGold }]}>{tag}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -546,9 +546,9 @@ const styles = StyleSheet.create({
   segmentRow: { paddingHorizontal: 16, gap: 6, paddingBottom: 8 },
   segmentBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
   segmentText: { fontSize: 10, letterSpacing: 0.8 },
-  tagsFilterRow: { paddingHorizontal: 16, gap: 6, paddingBottom: 8 },
-  tagFilterBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 99, borderWidth: 1 },
-  tagFilterText: { fontSize: 9, letterSpacing: 0.5 },
+  tagsFilterRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 8 },
+  tagFilterBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99, borderWidth: 1 },
+  tagFilterText: { fontSize: 11, letterSpacing: 0.3 },
   listContent: { paddingHorizontal: 16, paddingBottom: 16 },
   hintTitle: { fontSize: 20, fontWeight: '400', marginBottom: 8, letterSpacing: 1 },
   emptyText: { fontSize: 13, textAlign: 'center' },
