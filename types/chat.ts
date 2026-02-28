@@ -1,7 +1,7 @@
 // ── Chat-System Typen ────────────────────────────────────────
 
 export type ChannelType = 'direct' | 'event_group' | 'course_group' | 'custom_group';
-export type MsgType = 'text' | 'image' | 'voice' | 'location' | 'seeds' | 'poll' | 'system';
+export type MsgType = 'text' | 'image' | 'voice' | 'location' | 'seeds' | 'poll' | 'challenge' | 'system';
 export type MemberRole = 'admin' | 'member';
 
 export interface ChannelSettings {

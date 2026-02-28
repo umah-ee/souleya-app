@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, Image, TextInput, KeyboardAvoidingView,
-  Platform, ActivityIndicator, Modal, Pressable,
+  Platform, ActivityIndicator, Modal, Pressable, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -22,6 +22,10 @@ import PollBubble from '../../components/chat/PollBubble';
 import CreatePollModal from '../../components/chat/CreatePollModal';
 import SeedsTransferModal from '../../components/chat/SeedsTransferModal';
 import GroupInfoSheet from '../../components/chat/GroupInfoSheet';
+import ImageGrid from '../../components/shared/ImageGrid';
+import ChallengeCard from '../../components/challenges/ChallengeCard';
+import { fetchChallenge } from '../../lib/challenges';
+import type { Challenge } from '../../types/challenges';
 
 // Haeufig verwendete Emojis fuer den Reaktions-Picker
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '👏', '🙏', '✨', '🔥', '🕊️', '🌿', '💛'];
@@ -56,8 +60,9 @@ export default function ChatRoomScreen() {
   const [showPollForm, setShowPollForm] = useState(false);
   const [showSeedsModal, setShowSeedsModal] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [pollRefreshTrigger, setPollRefreshTrigger] = useState(0);
 
   const flatListRef = useRef<FlatList>(null);
@@ -318,38 +323,69 @@ export default function ChatRoomScreen() {
     }
   };
 
-  // ── Bild auswaehlen ───────────────────────────────────────
+  // ── Bilder auswaehlen ──────────────────────────────────────
   const handlePickImage = async () => {
+    const remaining = 10 - pendingImages.length;
+    if (remaining <= 0) return;
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.8,
-      allowsMultipleSelection: false,
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
     });
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+    if (!result.canceled && result.assets.length > 0) {
+      const newUris = result.assets.map((a) => a.uri);
+      setPendingImages((prev) => [...prev, ...newUris].slice(0, 10));
     }
   };
 
-  const handleSendImage = async () => {
-    if (!imageUri || !userId || !channelId || uploadingImage) return;
+  const handleRemovePendingImage = (index: number) => {
+    setPendingImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSendImages = async () => {
+    if (pendingImages.length === 0 || !userId || !channelId || uploadingImage) return;
     setUploadingImage(true);
     try {
-      const publicUrl = await uploadChatImage(imageUri, userId);
-      const msg = await sendMessage(channelId, { type: 'image', content: publicUrl });
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === msg.id)) return prev;
-        return [...prev, msg];
-      });
-      setImageUri(null);
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < pendingImages.length; i++) {
+        setUploadProgress(`${i + 1}/${pendingImages.length}`);
+        const publicUrl = await uploadChatImage(pendingImages[i], userId);
+        uploadedUrls.push(publicUrl);
+      }
+      setUploadProgress('');
+
+      if (uploadedUrls.length === 1) {
+        // Einzelbild: bestehendes Format beibehalten
+        const msg = await sendMessage(channelId, { type: 'image', content: uploadedUrls[0] });
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+      } else {
+        // Mehrere Bilder: als image_urls in metadata
+        const msg = await sendMessage(channelId, {
+          type: 'image',
+          content: uploadedUrls[0],
+          metadata: { image_urls: uploadedUrls },
+        });
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+      }
+      setPendingImages([]);
     } catch (e) {
       console.error(e);
     } finally {
       setUploadingImage(false);
+      setUploadProgress('');
     }
   };
 
-  const handleCancelImage = () => {
-    setImageUri(null);
+  const handleCancelImages = () => {
+    setPendingImages([]);
   };
 
   // ── Poll erstellt ─────────────────────────────────────────
@@ -436,8 +472,24 @@ export default function ChatRoomScreen() {
       );
     }
 
-    // Image-Nachricht
+    // Challenge-Nachricht
+    if (msg.type === 'challenge' && msg.metadata?.challenge_id) {
+      return (
+        <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
+          <View style={{ maxWidth: '85%' }}>
+            {showAuthor && <Text style={styles.bubbleAuthor}>{authorName}</Text>}
+            <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
+              <InlineChallengeEmbed challengeId={String(msg.metadata.challenge_id)} />
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // Image-Nachricht (Einzel- oder Multi-Bild)
     if (msg.type === 'image' && msg.content) {
+      const imageUrls: string[] = (msg.metadata?.image_urls as string[]) ?? [msg.content];
+
       return (
         <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
           <View style={{ maxWidth: '75%' }}>
@@ -447,11 +499,15 @@ export default function ChatRoomScreen() {
               activeOpacity={0.8}
               onLongPress={() => setActionMsg(msg)}
             >
-              <Image
-                source={{ uri: msg.content }}
-                style={styles.imageMsg}
-                resizeMode="cover"
-              />
+              {imageUrls.length === 1 ? (
+                <Image
+                  source={{ uri: imageUrls[0] }}
+                  style={styles.imageMsg}
+                  resizeMode="cover"
+                />
+              ) : (
+                <ImageGrid images={imageUrls} maxHeight={220} />
+              )}
               <View style={[styles.bubbleMeta, isOwn && { alignSelf: 'flex-end' }, { marginTop: 4, paddingHorizontal: 6 }]}>
                 {msg.edited_at && <Text style={styles.bubbleEdited}>bearbeitet</Text>}
                 <Text style={styles.bubbleTime}>
@@ -638,18 +694,42 @@ export default function ChatRoomScreen() {
         )}
 
         {/* Image Preview Banner */}
-        {imageUri && (
+        {pendingImages.length > 0 && (
           <View style={styles.imagePreviewBanner}>
-            <Image source={{ uri: imageUri }} style={styles.imagePreviewThumb} />
-            <Text style={styles.imagePreviewText} numberOfLines={1}>Bild senden</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 6, alignItems: 'center' }}
+              style={{ flex: 1 }}
+            >
+              {pendingImages.map((uri, i) => (
+                <View key={i} style={styles.pendingThumbWrap}>
+                  <Image source={{ uri }} style={styles.imagePreviewThumb} />
+                  {!uploadingImage && (
+                    <TouchableOpacity
+                      style={styles.pendingThumbRemove}
+                      onPress={() => handleRemovePendingImage(i)}
+                    >
+                      <Icon name="x" size={8} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+            <Text style={styles.imagePreviewText} numberOfLines={1}>
+              {uploadingImage
+                ? `Hochladen ${uploadProgress}`
+                : `${pendingImages.length} Bild${pendingImages.length > 1 ? 'er' : ''}`
+              }
+            </Text>
             {uploadingImage ? (
               <ActivityIndicator size="small" color="#C8A96E" />
             ) : (
               <>
-                <TouchableOpacity onPress={handleCancelImage} style={{ padding: 4 }}>
+                <TouchableOpacity onPress={handleCancelImages} style={{ padding: 4 }}>
                   <Icon name="x" size={14} color="#5A5450" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleSendImage} style={styles.imagePreviewSend}>
+                <TouchableOpacity onPress={handleSendImages} style={styles.imagePreviewSend}>
                   <Icon name="send" size={14} color="#1A1A1A" />
                 </TouchableOpacity>
               </>
@@ -761,6 +841,17 @@ export default function ChatRoomScreen() {
       )}
     </SafeAreaView>
   );
+}
+
+// ── InlineChallengeEmbed ──────────────────────────────────────────
+
+function InlineChallengeEmbed({ challengeId }: { challengeId: string }) {
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  useEffect(() => {
+    fetchChallenge(challengeId).then(setChallenge).catch(console.error);
+  }, [challengeId]);
+  if (!challenge) return null;
+  return <ChallengeCard challenge={challenge} />;
 }
 
 // ── MessageActionSheet ─────────────────────────────────────────
@@ -988,10 +1079,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(200,169,110,0.04)',
     borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.1)',
   },
+  pendingThumbWrap: {
+    width: 36, height: 36,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  pendingThumbRemove: {
+    position: 'absolute', top: 1, right: 1,
+    width: 14, height: 14, borderRadius: 7,
+    backgroundColor: 'rgba(230,57,70,0.9)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   imagePreviewThumb: {
     width: 36, height: 36, borderRadius: 6,
   },
-  imagePreviewText: { flex: 1, fontSize: 12, color: '#5A5450' },
+  imagePreviewText: { fontSize: 11, color: '#5A5450', marginLeft: 4 },
   imagePreviewSend: {
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: '#C8A96E',

@@ -1,11 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert,
   Image, TextInput, ActivityIndicator,
 } from 'react-native';
 import type { Pulse, PulseComment } from '../types/pulse';
 import { toggleLike, deletePulse, fetchComments, addComment } from '../lib/pulse';
+import { fetchChallenge } from '../lib/challenges';
+import type { Challenge } from '../types/challenges';
+import ChallengeCard from './challenges/ChallengeCard';
 import { Icon } from './Icon';
+import ImageGrid from './shared/ImageGrid';
 
 interface Props {
   pulse: Pulse;
@@ -19,6 +23,16 @@ function timeAgo(dateString: string): string {
   if (seconds < 3600) return `vor ${Math.floor(seconds / 60)} Min.`;
   if (seconds < 86400) return `vor ${Math.floor(seconds / 3600)} Std.`;
   return `vor ${Math.floor(seconds / 86400)} Tagen`;
+}
+
+// ── Inline Challenge Card ─────────────────────────────────
+function InlineChallengeCard({ challengeId }: { challengeId: string }) {
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  useEffect(() => {
+    fetchChallenge(challengeId).then(setChallenge).catch(console.error);
+  }, [challengeId]);
+  if (!challenge) return null;
+  return <ChallengeCard challenge={challenge} />;
 }
 
 export default function PulseCard({ pulse, currentUserId, onDelete }: Props) {
@@ -129,13 +143,25 @@ export default function PulseCard({ pulse, currentUserId, onDelete }: Props) {
       {/* Content */}
       <Text style={styles.content}>{pulse.content}</Text>
 
-      {/* Image */}
-      {pulse.image_url && (
-        <Image
-          source={{ uri: pulse.image_url }}
-          style={styles.pulseImage}
-          resizeMode="cover"
-        />
+      {/* Images */}
+      {(() => {
+        const images = pulse.image_urls?.length
+          ? pulse.image_urls
+          : pulse.image_url
+            ? [pulse.image_url]
+            : [];
+        return images.length > 0 ? (
+          <View style={{ marginTop: 4, marginBottom: 12 }}>
+            <ImageGrid images={images} />
+          </View>
+        ) : null;
+      })()}
+
+      {/* Challenge Embed */}
+      {pulse.metadata?.type === 'challenge' && Boolean(pulse.metadata?.challenge_id) && (
+        <View style={{ marginBottom: 12 }}>
+          <InlineChallengeCard challengeId={String(pulse.metadata.challenge_id)} />
+        </View>
       )}
 
       {/* Actions */}
@@ -277,10 +303,7 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     marginBottom: 12,
   },
-  pulseImage: {
-    width: '100%', height: 200,
-    borderRadius: 12, marginBottom: 12,
-  },
+  // pulseImage entfernt – ImageGrid uebernimmt Multi-Image-Darstellung
   actions: {
     flexDirection: 'row',
     gap: 16,

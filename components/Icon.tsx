@@ -47,7 +47,11 @@ export type IconName =
   | 'camera'
   | 'share'
   | 'navigation'
-  | 'tag';
+  | 'tag'
+  | 'flame'
+  | 'target'
+  | 'circle-check'
+  | 'trophy';
 
 interface IconProps {
   name: IconName;
@@ -343,6 +347,32 @@ const paths: Record<IconName, React.ReactNode> = {
     <>
       <Path d="M7.5 7.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
       <Path d="M3 6v5.172a2 2 0 0 0 .586 1.414l7.71 7.71a2.41 2.41 0 0 0 3.408 0l5.592 -5.592a2.41 2.41 0 0 0 0 -3.408l-7.71 -7.71a2 2 0 0 0 -1.414 -.586h-5.172a3 3 0 0 0 -3 3z" />
+    </>
+  ),
+  flame: (
+    <Path d="M12 12c2 -2.96 0 -7 -1 -8c0 3.038 -1.773 4.741 -3 6c-1.226 1.26 -2 3.24 -2 5a6 6 0 1 0 12 0c0 -1.532 -1.056 -3.94 -2 -5c-1.786 3 -2.791 3 -4 2z" />
+  ),
+  target: (
+    <>
+      <Path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+      <Path d="M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0 -10 0" />
+      <Path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+    </>
+  ),
+  'circle-check': (
+    <>
+      <Path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+      <Path d="M9 12l2 2l4 -4" />
+    </>
+  ),
+  trophy: (
+    <>
+      <Path d="M8 21l8 0" />
+      <Path d="M12 17l0 4" />
+      <Path d="M7 4l10 0" />
+      <Path d="M17 4v8a5 5 0 0 1 -10 0v-8" />
+      <Path d="M5 9m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+      <Path d="M19 9m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
     </>
   ),
 };

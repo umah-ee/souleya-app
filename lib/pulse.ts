@@ -1,5 +1,6 @@
 import { apiFetch } from './api';
-import type { Pulse, PulseComment } from '../types/pulse';
+import { useAuthStore } from '../store/auth';
+import type { Pulse, PulseComment, CreatePulseData } from '../types/pulse';
 
 // ── Feed laden (paginiert) ──────────────────────────────────
 export async function fetchFeed(page = 1, limit = 20) {
@@ -9,11 +10,11 @@ export async function fetchFeed(page = 1, limit = 20) {
   return { pulses: res.data, total: res.total, hasMore: res.hasMore };
 }
 
-// ── Pulse erstellen ─────────────────────────────────────────
-export async function createPulse(content: string, imageUrl?: string): Promise<Pulse> {
+// ── Pulse erstellen (erweitert: Bilder, Orte, Metadata, Umfragen) ──
+export async function createPulse(data: CreatePulseData): Promise<Pulse> {
   return apiFetch<Pulse>('/pulse', {
     method: 'POST',
-    body: JSON.stringify({ content, image_url: imageUrl ?? undefined }),
+    body: JSON.stringify(data),
   });
 }
 
@@ -44,5 +45,46 @@ export async function addComment(pulseId: string, content: string): Promise<Puls
   return apiFetch<PulseComment>(`/pulse/${pulseId}/comments`, {
     method: 'POST',
     body: JSON.stringify({ content }),
+  });
+}
+
+// ── Bild hochladen (ueber API → Supabase Storage) ──────────
+export async function uploadPulseImage(uri: string): Promise<string> {
+  const session = useAuthStore.getState().session;
+  if (!session?.access_token) throw new Error('Nicht angemeldet');
+
+  const ext = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+  const formData = new FormData();
+  formData.append('file', {
+    uri,
+    type: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+    name: filename,
+  } as unknown as Blob);
+
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+  const res = await fetch(`${apiUrl}/pulse/upload-image`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message ?? `Upload fehlgeschlagen: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return data.url;
+}
+
+// ── Poll abstimmen ──────────────────────────────────────────
+export async function votePoll(pulseId: string, optionId: string) {
+  return apiFetch(`/pulse/${pulseId}/vote`, {
+    method: 'POST',
+    body: JSON.stringify({ option_id: optionId }),
   });
 }
