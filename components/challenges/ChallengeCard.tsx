@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, Image, StyleSheet,
 } from 'react-native';
 import { useThemeStore } from '../../store/theme';
+import { Icon, type IconName } from '../Icon';
 import type { Challenge } from '../../types/challenges';
 
 interface Props {
@@ -99,7 +100,9 @@ export default function ChallengeCard({
     >
       {/* ── Header ──────────────────────────────────────────── */}
       <View style={styles.header}>
-        <Text style={styles.emoji}>{challenge.emoji}</Text>
+        <View style={[styles.iconBox, { backgroundColor: colors.goldBg, borderColor: colors.goldBorderS }]}>
+          <Icon name={(challenge.emoji || 'target') as IconName} size={20} color={colors.gold} />
+        </View>
         <Text style={[styles.title, { color: colors.textH }]} numberOfLines={1}>
           {challenge.title}
         </Text>
@@ -153,9 +156,12 @@ export default function ChallengeCard({
 
         {/* Streak */}
         {hasJoined && streak > 1 && (
-          <Text style={[styles.streakText, { color: colors.textMuted }]}>
-            {'\uD83D\uDD25'} {streak} Tage
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Icon name="flame" size={12} color={colors.textMuted} />
+            <Text style={[styles.streakText, { color: colors.textMuted }]}>
+              {streak} Tage
+            </Text>
+          </View>
         )}
 
         {/* Action */}
@@ -179,8 +185,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  emoji: {
-    fontSize: 24,
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     flex: 1,

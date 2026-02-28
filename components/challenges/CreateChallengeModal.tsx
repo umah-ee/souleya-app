@@ -4,7 +4,7 @@ import {
   StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Modal,
 } from 'react-native';
 import { useThemeStore } from '../../store/theme';
-import { Icon } from '../Icon';
+import { Icon, type IconName } from '../Icon';
 import { createChallenge } from '../../lib/challenges';
 import type { Challenge, CreateChallengeData } from '../../types/challenges';
 
@@ -15,11 +15,10 @@ interface Props {
   channelId?: string;
 }
 
-const EMOJI_PRESETS = [
-  '\uD83E\uDDD8', '\uD83C\uDFC3', '\uD83D\uDCAA', '\uD83C\uDF3F', '\uD83D\uDCD6',
-  '\u270D\uFE0F', '\uD83E\uDDE0', '\uD83D\uDCA4', '\uD83E\uDD57', '\uD83C\uDFAF',
-  '\uD83D\uDD25', '\uD83D\uDD4A\uFE0F', '\uD83D\uDC9B', '\u2728', '\uD83C\uDF0A',
-  '\uD83E\uDEC1',
+const PRESET_ICONS: IconName[] = [
+  'target', 'flame', 'heart', 'star', 'sparkles',
+  'moon', 'sun', 'seedling', 'pencil', 'trophy',
+  'circle-check', 'compass', 'users', 'book', 'run', 'droplet',
 ];
 
 const DURATION_PRESETS = [7, 14, 21, 30, 90];
@@ -29,7 +28,7 @@ export default function CreateChallengeModal({ visible, onClose, onCreated, chan
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [selectedEmoji, setSelectedEmoji] = useState(EMOJI_PRESETS[0]);
+  const [selectedIcon, setSelectedIcon] = useState<IconName>('target');
   const [durationDays, setDurationDays] = useState(21);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -39,7 +38,7 @@ export default function CreateChallengeModal({ visible, onClose, onCreated, chan
     if (!visible) {
       setTitle('');
       setDescription('');
-      setSelectedEmoji(EMOJI_PRESETS[0]);
+      setSelectedIcon('target');
       setDurationDays(21);
       setError('');
     }
@@ -60,7 +59,7 @@ export default function CreateChallengeModal({ visible, onClose, onCreated, chan
     const data: CreateChallengeData = {
       title: title.trim(),
       description: description.trim() || undefined,
-      emoji: selectedEmoji,
+      emoji: selectedIcon,
       duration_days: durationDays,
       channel_id: channelId,
     };
@@ -137,23 +136,23 @@ export default function CreateChallengeModal({ visible, onClose, onCreated, chan
               textAlignVertical="top"
             />
 
-            {/* Emoji-Auswahl */}
-            <Text style={[styles.label, { color: colors.textMuted }]}>EMOJI</Text>
+            {/* Icon-Auswahl */}
+            <Text style={[styles.label, { color: colors.textMuted }]}>ICON</Text>
             <View style={styles.emojiGrid}>
-              {EMOJI_PRESETS.map((emoji) => {
-                const isSelected = selectedEmoji === emoji;
+              {PRESET_ICONS.map((icon) => {
+                const isSelected = selectedIcon === icon;
                 return (
                   <TouchableOpacity
-                    key={emoji}
+                    key={icon}
                     style={[
                       styles.emojiBtn,
-                      { borderColor: 'transparent' },
+                      { borderColor: 'transparent', backgroundColor: colors.glass },
                       isSelected && { backgroundColor: colors.goldBg, borderColor: colors.gold },
                     ]}
-                    onPress={() => setSelectedEmoji(emoji)}
+                    onPress={() => setSelectedIcon(icon)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.emojiBtnText}>{emoji}</Text>
+                    <Icon name={icon} size={22} color={isSelected ? colors.gold : colors.textMuted} />
                   </TouchableOpacity>
                 );
               })}
@@ -303,10 +302,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emojiBtnText: {
-    fontSize: 22,
-  },
-
   // ── Duration Row ────────────────────────────────────────
   durationRow: {
     flexDirection: 'row',
