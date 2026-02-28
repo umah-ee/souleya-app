@@ -7,8 +7,10 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { createPulse, uploadPulseImage } from '../lib/pulse';
 import type { Pulse, CreatePulseData } from '../types/pulse';
+import type { Challenge } from '../types/challenges';
 import { useThemeStore } from '../store/theme';
 import { Icon } from './Icon';
+import CreateChallengeModal from './challenges/CreateChallengeModal';
 
 const MAX_IMAGES = 10;
 
@@ -16,13 +18,15 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onCreated: (pulse: Pulse) => void;
+  onChallengeCreated?: (challenge: Challenge) => void;
 }
 
-export default function CreatePulseModal({ visible, onClose, onCreated }: Props) {
+export default function CreatePulseModal({ visible, onClose, onCreated, onChallengeCreated }: Props) {
   const [content, setContent] = useState('');
   const [images, setImages] = useState<{ uri: string; preview: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
+  const [showChallengeModal, setShowChallengeModal] = useState(false);
   const maxLen = 1000;
   const colors = useThemeStore((s) => s.colors);
 
@@ -168,6 +172,14 @@ export default function CreatePulseModal({ visible, onClose, onCreated }: Props)
                   </Text>
                 )}
               </TouchableOpacity>
+              {/* Challenge Button */}
+              <TouchableOpacity
+                style={[styles.photoBtn, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}
+                onPress={() => setShowChallengeModal(true)}
+                activeOpacity={0.7}
+              >
+                <Icon name="target" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
               <Text style={[styles.counter, { color: colors.textMuted }]}>{content.length} / {maxLen}</Text>
             </View>
             <TouchableOpacity
@@ -184,6 +196,16 @@ export default function CreatePulseModal({ visible, onClose, onCreated }: Props)
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Challenge Modal */}
+      <CreateChallengeModal
+        visible={showChallengeModal}
+        onClose={() => setShowChallengeModal(false)}
+        onCreated={(challenge) => {
+          setShowChallengeModal(false);
+          onChallengeCreated?.(challenge);
+        }}
+      />
     </Modal>
   );
 }

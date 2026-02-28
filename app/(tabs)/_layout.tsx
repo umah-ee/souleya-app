@@ -11,7 +11,6 @@ function TabBarIcon({ name, color }: { name: IconName; color: string }) {
 
 const MEHR_ITEMS: { route: string; icon: IconName; label: string }[] = [
   { route: '/profile', icon: 'user', label: 'Profil' },
-  { route: '/places', icon: 'map-pin', label: 'Soul Places' },
   { route: '/studio', icon: 'compass', label: 'Studio' },
   { route: '/analytics', icon: 'chart-bar', label: 'Analytics' },
 ];
