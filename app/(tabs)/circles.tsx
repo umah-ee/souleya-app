@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth';
+import { useThemeStore } from '../../store/theme';
 import {
   fetchCircleFeed, getConnections, getIncomingRequests, getOutgoingRequests,
   respondToRequest, cancelRequest, removeConnection,
@@ -19,6 +20,7 @@ type Tab = 'feed' | 'connections' | 'requests';
 export default function CirclesScreen() {
   const insets = useSafeAreaInsets();
   const { session } = useAuthStore();
+  const colors = useThemeStore((s) => s.colors);
   const userId = session?.user.id;
   const [tab, setTab] = useState<Tab>('feed');
 
@@ -120,26 +122,26 @@ export default function CirclesScreen() {
     const name = item.profile.display_name ?? item.profile.username ?? 'Anonym';
     const initial = name.slice(0, 1).toUpperCase();
     return (
-      <View style={styles.card}>
-        <View style={[styles.avatar, item.profile.is_first_light && styles.avatarFirstLight]}>
+      <View style={[styles.card, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
+        <View style={[styles.avatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }, item.profile.is_first_light && { borderColor: colors.goldBorder }]}>
           {item.profile.avatar_url ? (
             <Image source={{ uri: item.profile.avatar_url }} style={styles.avatarImg} />
           ) : (
-            <Text style={styles.avatarText}>{initial}</Text>
+            <Text style={[styles.avatarText, { color: colors.gold }]}>{initial}</Text>
           )}
         </View>
         <View style={styles.cardInfo}>
-          <Text style={styles.cardName}>{name}</Text>
+          <Text style={[styles.cardName, { color: colors.textH }]}>{name}</Text>
           {item.profile.username && (
-            <Text style={styles.cardHandle}>@{item.profile.username}</Text>
+            <Text style={[styles.cardHandle, { color: colors.textMuted }]}>@{item.profile.username}</Text>
           )}
         </View>
         <TouchableOpacity
-          style={styles.removeBtn}
+          style={[styles.removeBtn, { borderColor: colors.divider }]}
           onPress={() => handleRemoveConnection(item)}
           activeOpacity={0.7}
         >
-          <Text style={styles.removeBtnText}>ENTFERNEN</Text>
+          <Text style={[styles.removeBtnText, { color: colors.textMuted }]}>ENTFERNEN</Text>
         </TouchableOpacity>
       </View>
     );
@@ -150,24 +152,24 @@ export default function CirclesScreen() {
     const name = item.profile.display_name ?? item.profile.username ?? 'Anonym';
     const initial = name.slice(0, 1).toUpperCase();
     return (
-      <View style={styles.card}>
-        <View style={[styles.avatar, item.profile.is_first_light && styles.avatarFirstLight]}>
+      <View style={[styles.card, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
+        <View style={[styles.avatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }, item.profile.is_first_light && { borderColor: colors.goldBorder }]}>
           {item.profile.avatar_url ? (
             <Image source={{ uri: item.profile.avatar_url }} style={styles.avatarImg} />
           ) : (
-            <Text style={styles.avatarText}>{initial}</Text>
+            <Text style={[styles.avatarText, { color: colors.gold }]}>{initial}</Text>
           )}
         </View>
         <View style={styles.cardInfo}>
-          <Text style={styles.cardName}>{name}</Text>
-          <Text style={styles.cardMeta}>moechte sich verbinden</Text>
+          <Text style={[styles.cardName, { color: colors.textH }]}>{name}</Text>
+          <Text style={[styles.cardMeta, { color: colors.textSec }]}>moechte sich verbinden</Text>
         </View>
         <View style={styles.requestActions}>
-          <TouchableOpacity style={styles.acceptBtn} onPress={() => handleAccept(item)} activeOpacity={0.7}>
-            <Icon name="check" size={16} color="#52B788" />
+          <TouchableOpacity style={[styles.acceptBtn, { backgroundColor: `${colors.success}22`, borderColor: `${colors.success}44` }]} onPress={() => handleAccept(item)} activeOpacity={0.7}>
+            <Icon name="check" size={16} color={colors.success} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.declineBtn} onPress={() => handleDecline(item)} activeOpacity={0.7}>
-            <Icon name="x" size={14} color="#5A5450" />
+          <TouchableOpacity style={[styles.declineBtn, { backgroundColor: colors.glass, borderColor: colors.divider }]} onPress={() => handleDecline(item)} activeOpacity={0.7}>
+            <Icon name="x" size={14} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
       </View>
@@ -179,48 +181,48 @@ export default function CirclesScreen() {
     const name = item.profile.display_name ?? item.profile.username ?? 'Anonym';
     const initial = name.slice(0, 1).toUpperCase();
     return (
-      <View style={styles.card}>
-        <View style={[styles.avatar, item.profile.is_first_light && styles.avatarFirstLight]}>
+      <View style={[styles.card, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
+        <View style={[styles.avatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }, item.profile.is_first_light && { borderColor: colors.goldBorder }]}>
           {item.profile.avatar_url ? (
             <Image source={{ uri: item.profile.avatar_url }} style={styles.avatarImg} />
           ) : (
-            <Text style={styles.avatarText}>{initial}</Text>
+            <Text style={[styles.avatarText, { color: colors.gold }]}>{initial}</Text>
           )}
         </View>
         <View style={styles.cardInfo}>
-          <Text style={styles.cardName}>{name}</Text>
-          <Text style={styles.cardMeta}>Anfrage ausstehend</Text>
+          <Text style={[styles.cardName, { color: colors.textH }]}>{name}</Text>
+          <Text style={[styles.cardMeta, { color: colors.textSec }]}>Anfrage ausstehend</Text>
         </View>
-        <TouchableOpacity style={styles.cancelBtn} onPress={() => handleCancelRequest(item)} activeOpacity={0.7}>
-          <Text style={styles.cancelBtnText}>ZURUECK</Text>
+        <TouchableOpacity style={[styles.cancelBtn, { borderColor: colors.goldBorderS }]} onPress={() => handleCancelRequest(item)} activeOpacity={0.7}>
+          <Text style={[styles.cancelBtnText, { color: colors.textMuted }]}>ZURUECK</Text>
         </TouchableOpacity>
       </View>
     );
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.bgSolid }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <Icon name="users" size={22} color="#C8A96E" />
-        <Text style={styles.headerTitle}>KONTAKTE</Text>
+      <View style={[styles.header, { borderBottomColor: colors.divider }]}>
+        <Icon name="users" size={22} color={colors.gold} />
+        <Text style={[styles.headerTitle, { color: colors.gold }]}>CIRCLE</Text>
       </View>
 
       {/* Tab-Leiste */}
-      <View style={styles.tabs}>
+      <View style={[styles.tabs, { borderBottomColor: colors.dividerL }]}>
         {(['feed', 'connections', 'requests'] as Tab[]).map((t) => (
           <TouchableOpacity
             key={t}
-            style={[styles.tabBtn, tab === t && styles.tabBtnActive]}
+            style={[styles.tabBtn, tab === t && { backgroundColor: colors.goldBg, borderWidth: 1, borderColor: colors.goldBorderS }]}
             onPress={() => setTab(t)}
             activeOpacity={0.7}
           >
-            <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
+            <Text style={[styles.tabText, { color: colors.textMuted }, tab === t && { color: colors.goldText }]}>
               {t === 'feed' ? 'Feed' : t === 'connections' ? 'Verbindungen' : 'Anfragen'}
             </Text>
             {t === 'requests' && incoming.length > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{incoming.length}</Text>
+              <View style={[styles.badge, { backgroundColor: colors.gold }]}>
+                <Text style={[styles.badgeText, { color: colors.textOnGold }]}>{incoming.length}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -231,12 +233,12 @@ export default function CirclesScreen() {
       {tab === 'feed' && (
         feedLoading ? (
           <View style={styles.center}>
-            <ActivityIndicator color="#C8A96E" />
+            <ActivityIndicator color={colors.gold} />
           </View>
         ) : feedPulses.length === 0 ? (
           <View style={styles.center}>
-            <Text style={styles.emptyTitle}>Dein Circle ist noch leer</Text>
-            <Text style={styles.emptyText}>Verbinde dich mit anderen, um ihren Pulse hier zu sehen.</Text>
+            <Text style={[styles.emptyTitle, { color: colors.goldDeep }]}>Dein Circle ist noch leer</Text>
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>Verbinde dich mit anderen, um ihren Pulse hier zu sehen.</Text>
           </View>
         ) : (
           <FlatList
@@ -247,7 +249,7 @@ export default function CirclesScreen() {
             )}
             contentContainerStyle={styles.listContent}
             refreshControl={
-              <RefreshControl refreshing={feedRefreshing} onRefresh={handleRefreshFeed} tintColor="#C8A96E" />
+              <RefreshControl refreshing={feedRefreshing} onRefresh={handleRefreshFeed} tintColor={colors.gold} />
             }
           />
         )
@@ -256,11 +258,11 @@ export default function CirclesScreen() {
       {tab === 'connections' && (
         connLoading ? (
           <View style={styles.center}>
-            <ActivityIndicator color="#C8A96E" />
+            <ActivityIndicator color={colors.gold} />
           </View>
         ) : connections.length === 0 ? (
           <View style={styles.center}>
-            <Text style={styles.emptyText}>Noch keine Verbindungen</Text>
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>Noch keine Verbindungen</Text>
           </View>
         ) : (
           <FlatList
@@ -275,11 +277,11 @@ export default function CirclesScreen() {
       {tab === 'requests' && (
         reqLoading ? (
           <View style={styles.center}>
-            <ActivityIndicator color="#C8A96E" />
+            <ActivityIndicator color={colors.gold} />
           </View>
         ) : incoming.length === 0 && outgoing.length === 0 ? (
           <View style={styles.center}>
-            <Text style={styles.emptyText}>Keine offenen Anfragen</Text>
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>Keine offenen Anfragen</Text>
           </View>
         ) : (
           <FlatList
@@ -291,7 +293,7 @@ export default function CirclesScreen() {
             contentContainerStyle={styles.listContent}
             ListHeaderComponent={
               incoming.length > 0 && outgoing.length > 0 ? (
-                <Text style={styles.sectionHeader}>EINGEHEND</Text>
+                <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>EINGEHEND</Text>
               ) : null
             }
           />
@@ -302,83 +304,71 @@ export default function CirclesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#18161F' },
+  container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(200,169,110,0.08)',
+    borderBottomWidth: 1,
   },
-  headerIcon: { fontSize: 22, color: '#C8A96E' },
-  headerTitle: { fontSize: 11, letterSpacing: 4, color: '#C8A96E' },
+  headerTitle: { fontSize: 11, letterSpacing: 4 },
   tabs: {
     flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8,
-    gap: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(200,169,110,0.06)',
+    gap: 8, borderBottomWidth: 1,
   },
   tabBtn: {
     paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 6,
   },
-  tabBtnActive: {
-    backgroundColor: 'rgba(200,169,110,0.12)',
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.2)',
-  },
-  tabText: { fontSize: 11, letterSpacing: 1, color: '#5A5450' },
-  tabTextActive: { color: '#C8A96E' },
+  tabText: { fontSize: 11, letterSpacing: 1 },
   badge: {
-    backgroundColor: '#C8A96E', borderRadius: 10,
+    borderRadius: 10,
     paddingHorizontal: 5, paddingVertical: 1, minWidth: 18,
     alignItems: 'center',
   },
-  badgeText: { fontSize: 9, color: '#1E1C26', fontWeight: '600' },
+  badgeText: { fontSize: 9, fontWeight: '600' },
   listContent: { padding: 16 },
-  emptyTitle: { fontSize: 20, fontWeight: '300', color: '#A8894E', marginBottom: 8, letterSpacing: 1 },
-  emptyText: { fontSize: 13, color: '#5A5450', textAlign: 'center' },
+  emptyTitle: { fontSize: 20, fontWeight: '400', marginBottom: 8, letterSpacing: 1 },
+  emptyText: { fontSize: 13, textAlign: 'center' },
   sectionHeader: {
-    fontSize: 9, letterSpacing: 3, color: '#5A5450',
+    fontSize: 9, letterSpacing: 3,
     marginBottom: 12, marginTop: 4,
   },
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#2C2A35', borderRadius: 16, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: 'rgba(200,169,110,0.1)',
+    borderRadius: 16, padding: 14,
+    marginBottom: 10, borderWidth: 1,
   },
   avatar: {
     width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(200,169,110,0.12)',
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.2)',
+    borderWidth: 1,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  avatarFirstLight: { borderColor: 'rgba(200,169,110,0.5)' },
   avatarImg: { width: 44, height: 44, borderRadius: 22 },
-  avatarText: { fontSize: 17, color: '#C8A96E', fontWeight: '300' },
+  avatarText: { fontSize: 17, fontWeight: '400' },
   cardInfo: { flex: 1 },
-  cardName: { fontSize: 14, color: '#F0EDE8', fontWeight: '500' },
-  cardHandle: { fontSize: 12, color: '#5A5450', marginTop: 1 },
-  cardMeta: { fontSize: 11, color: '#9A9080', marginTop: 2 },
+  cardName: { fontSize: 14, fontWeight: '500' },
+  cardHandle: { fontSize: 12, marginTop: 1 },
+  cardMeta: { fontSize: 11, marginTop: 2 },
   removeBtn: {
     paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 99, borderWidth: 1, borderColor: 'rgba(90,84,80,0.3)',
+    borderRadius: 99, borderWidth: 1,
   },
-  removeBtnText: { fontSize: 8, letterSpacing: 2, color: '#5A5450' },
+  removeBtnText: { fontSize: 8, letterSpacing: 2 },
   requestActions: { flexDirection: 'row', gap: 8 },
   acceptBtn: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(82,183,136,0.15)',
-    borderWidth: 1, borderColor: 'rgba(82,183,136,0.3)',
+    borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  acceptBtnText: { fontSize: 16, color: '#52B788' },
   declineBtn: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(90,84,80,0.15)',
-    borderWidth: 1, borderColor: 'rgba(90,84,80,0.3)',
+    borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  declineBtnText: { fontSize: 14, color: '#5A5450' },
   cancelBtn: {
     paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 99, borderWidth: 1, borderColor: 'rgba(200,169,110,0.15)',
+    borderRadius: 99, borderWidth: 1,
   },
-  cancelBtnText: { fontSize: 8, letterSpacing: 2, color: '#5A5450' },
+  cancelBtnText: { fontSize: 8, letterSpacing: 2 },
 });

@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../store/auth';
 import { useChatStore } from '../../store/chat';
+import { useThemeStore } from '../../store/theme';
 import type { ChannelOverview } from '../../types/chat';
 import type { Connection } from '../../types/circles';
 import { fetchChannels, createDirectChannel, createGroupChannel } from '../../lib/chat';
@@ -42,6 +43,7 @@ export default function ChatTab() {
   const router = useRouter();
   const session = useAuthStore((s) => s.session);
   const setTotalUnread = useChatStore((s) => s.setTotalUnread);
+  const colors = useThemeStore((s) => s.colors);
   const [channels, setChannels] = useState<ChannelOverview[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,18 +87,18 @@ export default function ChatTab() {
 
     return (
       <TouchableOpacity
-        style={[styles.channelRow, hasUnread && styles.channelRowUnread]}
+        style={[styles.channelRow, hasUnread && { backgroundColor: colors.goldBg }]}
         onPress={() => handleChannelPress(item.id)}
         activeOpacity={0.7}
       >
         {/* Avatar */}
-        <View style={[styles.avatar, hasUnread && styles.avatarUnread]}>
+        <View style={[styles.avatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }, hasUnread && { borderColor: colors.goldBorder }]}>
           {item.avatar_url ? (
             <Image source={{ uri: item.avatar_url }} style={styles.avatarImg} />
           ) : item.type === 'direct' ? (
-            <Text style={styles.avatarText}>{initials}</Text>
+            <Text style={[styles.avatarText, { color: colors.gold }]}>{initials}</Text>
           ) : (
-            <Icon name="users" size={18} color="#C8A96E" />
+            <Icon name="users" size={18} color={colors.gold} />
           )}
         </View>
 
@@ -104,22 +106,22 @@ export default function ChatTab() {
         <View style={styles.channelContent}>
           <View style={styles.channelTopRow}>
             <Text
-              style={[styles.channelName, hasUnread && styles.channelNameUnread]}
+              style={[styles.channelName, { color: colors.textBody }, hasUnread && { color: colors.textH, fontWeight: '500' }]}
               numberOfLines={1}
             >
               {item.name ?? 'Chat'}
             </Text>
             {item.last_message && (
-              <Text style={styles.channelTime}>{timeAgo(item.last_message.created_at)}</Text>
+              <Text style={[styles.channelTime, { color: colors.textMuted }]}>{timeAgo(item.last_message.created_at)}</Text>
             )}
           </View>
           <View style={styles.channelBottomRow}>
-            <Text style={styles.channelPreview} numberOfLines={1}>
+            <Text style={[styles.channelPreview, { color: colors.textMuted }]} numberOfLines={1}>
               {getMessagePreview(item)}
             </Text>
             {hasUnread && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>
+              <View style={[styles.badge, { backgroundColor: colors.gold }]}>
+                <Text style={[styles.badgeText, { color: colors.textOnGold }]}>
                   {item.unread_count > 99 ? '99+' : item.unread_count}
                 </Text>
               </View>
@@ -131,29 +133,29 @@ export default function ChatTab() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgSolid }]} edges={['top']}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Chat</Text>
+      <View style={[styles.header, { borderBottomColor: colors.dividerL }]}>
+        <Text style={[styles.headerTitle, { color: colors.gold }]}>Chat</Text>
         <TouchableOpacity
-          style={styles.newChatBtn}
+          style={[styles.newChatBtn, { backgroundColor: colors.gold }]}
           onPress={() => setShowNewChat(true)}
           activeOpacity={0.7}
         >
-          <Icon name="plus" size={14} color="#1A1A1A" />
-          <Text style={styles.newChatBtnText}>NEU</Text>
+          <Icon name="plus" size={14} color={colors.textOnGold} />
+          <Text style={[styles.newChatBtnText, { color: colors.textOnGold }]}>NEU</Text>
         </TouchableOpacity>
       </View>
 
       {/* Channel-Liste */}
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color="#C8A96E" />
+          <ActivityIndicator color={colors.gold} />
         </View>
       ) : channels.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>Noch keine Chats</Text>
-          <Text style={styles.emptyText}>
+          <Text style={[styles.emptyTitle, { color: colors.gold }]}>Noch keine Chats</Text>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>
             Starte einen neuen Chat mit einer deiner Verbindungen.
           </Text>
         </View>
@@ -167,8 +169,8 @@ export default function ChatTab() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor="#C8A96E"
-              colors={['#C8A96E']}
+              tintColor={colors.gold}
+              colors={[colors.gold]}
             />
           }
         />
@@ -193,6 +195,7 @@ function NewChatModal({
   onClose: () => void;
   onCreated: (channelId: string) => void;
 }) {
+  const colors = useThemeStore((s) => s.colors);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -270,30 +273,30 @@ function NewChatModal({
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+        <View style={[styles.modalContent, { backgroundColor: colors.glassNav }]}>
           {/* Header */}
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Neuer Chat</Text>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.dividerL }]}>
+            <Text style={[styles.modalTitle, { color: colors.textH }]}>Neuer Chat</Text>
             <TouchableOpacity onPress={onClose}>
-              <Icon name="x" size={20} color="#5A5450" />
+              <Icon name="x" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
           {/* Modus-Toggle */}
-          <View style={styles.modeToggle}>
+          <View style={[styles.modeToggle, { borderColor: colors.goldBorderS }]}>
             <Pressable
-              style={[styles.modeBtn, mode === 'direct' && styles.modeBtnActive]}
+              style={[styles.modeBtn, mode === 'direct' && { backgroundColor: colors.goldBg }]}
               onPress={() => setMode('direct')}
             >
-              <Text style={[styles.modeBtnText, mode === 'direct' && styles.modeBtnTextActive]}>
+              <Text style={[styles.modeBtnText, { color: colors.textMuted }, mode === 'direct' && { color: colors.goldText }]}>
                 Direkt
               </Text>
             </Pressable>
             <Pressable
-              style={[styles.modeBtn, mode === 'group' && styles.modeBtnActive]}
+              style={[styles.modeBtn, mode === 'group' && { backgroundColor: colors.goldBg }]}
               onPress={() => setMode('group')}
             >
-              <Text style={[styles.modeBtnText, mode === 'group' && styles.modeBtnTextActive]}>
+              <Text style={[styles.modeBtnText, { color: colors.textMuted }, mode === 'group' && { color: colors.goldText }]}>
                 Gruppe
               </Text>
             </Pressable>
@@ -302,26 +305,26 @@ function NewChatModal({
           {/* Gruppenname (nur im Gruppen-Modus) */}
           {mode === 'group' && (
             <TextInput
-              style={[styles.searchInput, { marginBottom: 0 }]}
+              style={[styles.searchInput, { marginBottom: 0, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
               value={groupName}
               onChangeText={setGroupName}
               placeholder="Gruppenname ..."
-              placeholderTextColor="#5A5450"
+              placeholderTextColor={colors.textMuted}
             />
           )}
 
           {/* Suche */}
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
             value={search}
             onChangeText={setSearch}
             placeholder="Kontakt suchen ..."
-            placeholderTextColor="#5A5450"
+            placeholderTextColor={colors.textMuted}
           />
 
           {/* Liste */}
           {loading ? (
-            <ActivityIndicator color="#C8A96E" style={{ marginTop: 24 }} />
+            <ActivityIndicator color={colors.gold} style={{ marginTop: 24 }} />
           ) : (
             <FlatList
               data={filtered}
@@ -341,20 +344,20 @@ function NewChatModal({
                       disabled={creating}
                       activeOpacity={0.7}
                     >
-                      <View style={styles.contactAvatar}>
+                      <View style={[styles.contactAvatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }]}>
                         {profile.avatar_url ? (
                           <Image source={{ uri: profile.avatar_url }} style={styles.contactAvatarImg} />
                         ) : (
-                          <Text style={styles.contactAvatarText}>{initial}</Text>
+                          <Text style={[styles.contactAvatarText, { color: colors.gold }]}>{initial}</Text>
                         )}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.contactName}>{name}</Text>
+                        <Text style={[styles.contactName, { color: colors.textH }]}>{name}</Text>
                         {profile.username && (
-                          <Text style={styles.contactUsername}>@{profile.username}</Text>
+                          <Text style={[styles.contactUsername, { color: colors.textMuted }]}>@{profile.username}</Text>
                         )}
                       </View>
-                      <Icon name="message-circle" size={16} color="#C8A96E" />
+                      <Icon name="message-circle" size={16} color={colors.gold} />
                     </TouchableOpacity>
                   );
                 }
@@ -366,25 +369,25 @@ function NewChatModal({
                     onPress={() => toggleSelect(profile.id)}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.contactAvatar, isSelected && styles.contactAvatarSelected]}>
+                    <View style={[styles.contactAvatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }, isSelected && { borderColor: colors.gold, borderWidth: 2 }]}>
                       {profile.avatar_url ? (
                         <Image source={{ uri: profile.avatar_url }} style={styles.contactAvatarImg} />
                       ) : (
-                        <Text style={styles.contactAvatarText}>{initial}</Text>
+                        <Text style={[styles.contactAvatarText, { color: colors.gold }]}>{initial}</Text>
                       )}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.contactName}>{name}</Text>
+                      <Text style={[styles.contactName, { color: colors.textH }]}>{name}</Text>
                       {profile.username && (
-                        <Text style={styles.contactUsername}>@{profile.username}</Text>
+                        <Text style={[styles.contactUsername, { color: colors.textMuted }]}>@{profile.username}</Text>
                       )}
                     </View>
-                    {isSelected && <Icon name="check" size={16} color="#C8A96E" />}
+                    {isSelected && <Icon name="check" size={16} color={colors.gold} />}
                   </TouchableOpacity>
                 );
               }}
               ListEmptyComponent={
-                <Text style={styles.emptyText}>
+                <Text style={[styles.emptyText, { color: colors.textMuted }]}>
                   {search ? 'Kein Kontakt gefunden' : 'Noch keine Verbindungen'}
                 </Text>
               }
@@ -396,16 +399,17 @@ function NewChatModal({
             <TouchableOpacity
               style={[
                 styles.createGroupBtn,
-                (selectedIds.size < 2 || !groupName.trim() || creating) && styles.createGroupBtnDisabled,
+                { backgroundColor: colors.gold },
+                (selectedIds.size < 2 || !groupName.trim() || creating) && { backgroundColor: colors.goldBg },
               ]}
               onPress={handleCreateGroup}
               disabled={selectedIds.size < 2 || !groupName.trim() || creating}
               activeOpacity={0.7}
             >
               {creating ? (
-                <ActivityIndicator size="small" color="#1A1A1A" />
+                <ActivityIndicator size="small" color={colors.textOnGold} />
               ) : (
-                <Text style={styles.createGroupBtnText}>
+                <Text style={[styles.createGroupBtnText, { color: colors.textOnGold }]}>
                   Gruppe erstellen{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
                 </Text>
               )}
@@ -418,26 +422,25 @@ function NewChatModal({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1A1A1A' },
+  container: { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(200,169,110,0.06)',
+    borderBottomWidth: 1,
   },
-  headerTitle: { fontSize: 22, fontWeight: '300', color: '#C8A96E' },
+  headerTitle: { fontSize: 22, fontWeight: '400' },
   newChatBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 14, paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: '#C8A96E',
   },
-  newChatBtnText: { fontSize: 9, letterSpacing: 2, color: '#1A1A1A', fontWeight: '500' },
+  newChatBtnText: { fontSize: 9, letterSpacing: 2, fontWeight: '500' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: {
     flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32,
   },
-  emptyTitle: { fontSize: 20, fontWeight: '300', color: '#C8A96E', marginBottom: 8 },
-  emptyText: { fontSize: 13, color: '#5A5450', textAlign: 'center' },
+  emptyTitle: { fontSize: 20, fontWeight: '400', marginBottom: 8 },
+  emptyText: { fontSize: 13, textAlign: 'center' },
 
   // Channel Row
   channelRow: {
@@ -445,30 +448,25 @@ const styles = StyleSheet.create({
     paddingVertical: 12, paddingHorizontal: 8,
     borderRadius: 14,
   },
-  channelRowUnread: { backgroundColor: 'rgba(200,169,110,0.04)' },
   avatar: {
     width: 48, height: 48, borderRadius: 24,
-    backgroundColor: 'rgba(200,169,110,0.1)',
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.15)',
+    borderWidth: 1,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  avatarUnread: { borderColor: 'rgba(200,169,110,0.4)' },
   avatarImg: { width: 48, height: 48, borderRadius: 24 },
-  avatarText: { fontSize: 16, color: '#C8A96E', fontWeight: '300' },
+  avatarText: { fontSize: 16, fontWeight: '400' },
   channelContent: { flex: 1, minWidth: 0 },
   channelTopRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
-  channelName: { fontSize: 14, color: '#c8c0b8', flex: 1, fontWeight: '400' },
-  channelNameUnread: { color: '#F0EDE8', fontWeight: '500' },
-  channelTime: { fontSize: 10, color: '#5A5450' },
+  channelName: { fontSize: 14, flex: 1, fontWeight: '400' },
+  channelTime: { fontSize: 10 },
   channelBottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
-  channelPreview: { fontSize: 12, color: '#5A5450', flex: 1, fontWeight: '400' },
+  channelPreview: { fontSize: 12, flex: 1, fontWeight: '400' },
   badge: {
     minWidth: 18, height: 18, borderRadius: 9,
-    backgroundColor: '#C8A96E',
     alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 4,
   },
-  badgeText: { fontSize: 10, color: '#1A1A1A', fontWeight: '700' },
+  badgeText: { fontSize: 10, fontWeight: '700' },
 
   // Modal
   modalOverlay: {
@@ -476,22 +474,19 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#1E1C26',
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
     maxHeight: '80%', paddingBottom: 20,
   },
   modalHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 16,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(200,169,110,0.06)',
+    borderBottomWidth: 1,
   },
-  modalTitle: { fontSize: 18, fontWeight: '300', color: '#F0EDE8' },
+  modalTitle: { fontSize: 18, fontWeight: '400' },
   searchInput: {
     marginHorizontal: 16, marginTop: 12, marginBottom: 8,
     paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.1)',
-    borderRadius: 8, color: '#F0EDE8', fontSize: 13,
+    borderWidth: 1, borderRadius: 8, fontSize: 13,
   },
   contactRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -499,37 +494,30 @@ const styles = StyleSheet.create({
   },
   contactAvatar: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(200,169,110,0.1)',
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.15)',
+    borderWidth: 1,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
   contactAvatarImg: { width: 40, height: 40, borderRadius: 20 },
-  contactAvatarText: { fontSize: 14, color: '#C8A96E' },
-  contactName: { fontSize: 14, color: '#F0EDE8', fontWeight: '400' },
-  contactUsername: { fontSize: 11, color: '#5A5450' },
-  contactAvatarSelected: {
-    borderColor: '#C8A96E', borderWidth: 2,
-  },
+  contactAvatarText: { fontSize: 14 },
+  contactName: { fontSize: 14, fontWeight: '400' },
+  contactUsername: { fontSize: 11 },
 
   // Modus-Toggle
   modeToggle: {
     flexDirection: 'row', marginHorizontal: 16, marginTop: 12, marginBottom: 4,
     borderRadius: 8, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.15)',
+    borderWidth: 1,
   },
   modeBtn: {
     flex: 1, paddingVertical: 8, alignItems: 'center',
   },
-  modeBtnActive: { backgroundColor: 'rgba(200,169,110,0.12)' },
-  modeBtnText: { fontSize: 12, color: '#5A5450', letterSpacing: 1, textTransform: 'uppercase' },
-  modeBtnTextActive: { color: '#C8A96E' },
+  modeBtnText: { fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' },
 
   // Gruppe erstellen Button
   createGroupBtn: {
     marginHorizontal: 16, marginTop: 8, marginBottom: 4,
     paddingVertical: 12, borderRadius: 24,
-    backgroundColor: '#C8A96E', alignItems: 'center',
+    alignItems: 'center',
   },
-  createGroupBtnDisabled: { backgroundColor: 'rgba(200,169,110,0.3)' },
-  createGroupBtnText: { fontSize: 13, color: '#1A1A1A', fontWeight: '600', letterSpacing: 1 },
+  createGroupBtnText: { fontSize: 13, fontWeight: '600', letterSpacing: 1 },
 });

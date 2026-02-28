@@ -1,18 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TextInput, FlatList, TouchableOpacity,
-  StyleSheet, ActivityIndicator, Image,
+  StyleSheet, ActivityIndicator, Image, ScrollView,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth';
+import { useThemeStore } from '../../store/theme';
 import { searchUsers, type UserSearchResult } from '../../lib/users';
 import { sendConnectionRequest, getConnectionStatus } from '../../lib/circles';
 import { fetchNearbyUsers, fetchEvents, joinEvent, leaveEvent } from '../../lib/events';
+import { fetchNearbyPlaces, savePlace, unsavePlace, PLACE_TAGS } from '../../lib/places';
 import type { ConnectionStatus } from '../../types/circles';
 import type { SoEvent } from '../../types/events';
+import type { Place } from '../../types/places';
 import { Icon } from '../../components/Icon';
+import CreatePlaceModal from '../../components/discover/CreatePlaceModal';
 
-type DiscoverTab = 'nearby' | 'events';
+type Segment = 'alle' | 'mitglieder' | 'events' | 'orte';
 
 interface UserWithStatus extends UserSearchResult {
   connectionStatus: ConnectionStatus;
@@ -39,8 +44,14 @@ const DEFAULT_LNG = 11.576;
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { session } = useAuthStore();
+  const colors = useThemeStore((s) => s.colors);
   const userId = session?.user.id;
+
+  // ── Segment + Tags ─────────────────────────────────────
+  const [segment, setSegment] = useState<Segment>('alle');
+  const [activeTags, setActiveTags] = useState<string[]>([]);
 
   // ── Suche ──────────────────────────────────────────────
   const [query, setQuery] = useState('');
@@ -49,40 +60,54 @@ export default function DiscoverScreen() {
   const [searched, setSearched] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Discover (Nearby + Events) ─────────────────────────
-  const [tab, setTab] = useState<DiscoverTab>('nearby');
+  // ── Discover-Daten ─────────────────────────────────────
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [events, setEvents] = useState<SoEvent[]>([]);
+  const [places, setPlaces] = useState<Place[]>([]);
   const [loadingNearby, setLoadingNearby] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
+  const [loadingPlaces, setLoadingPlaces] = useState(true);
   const [joiningEvent, setJoiningEvent] = useState<Record<string, boolean>>({});
+  const [savingPlace, setSavingPlace] = useState<Record<string, boolean>>({});
+  const [showCreatePlace, setShowCreatePlace] = useState(false);
 
   const isSearchActive = query.trim().length >= 2;
 
-  // ── Discover-Daten laden ───────────────────────────────
+  // ── Daten laden ────────────────────────────────────────
   const loadDiscoverData = useCallback(async () => {
     setLoadingNearby(true);
     setLoadingEvents(true);
+    setLoadingPlaces(true);
     try {
-      const [nearbyRes, eventsRes] = await Promise.all([
+      const [nearbyRes, eventsRes, placesRes] = await Promise.all([
         fetchNearbyUsers(DEFAULT_LAT, DEFAULT_LNG),
         fetchEvents({ lat: DEFAULT_LAT, lng: DEFAULT_LNG }),
+        fetchNearbyPlaces(DEFAULT_LAT, DEFAULT_LNG, undefined, activeTags.length > 0 ? activeTags : undefined),
       ]);
       setNearbyUsers(nearbyRes.data);
       setEvents(eventsRes.data);
+      setPlaces(placesRes);
     } catch (e) {
       console.error('Discover laden fehlgeschlagen:', e);
     } finally {
       setLoadingNearby(false);
       setLoadingEvents(false);
+      setLoadingPlaces(false);
     }
-  }, []);
+  }, [activeTags]);
 
   useEffect(() => {
     loadDiscoverData();
   }, [loadDiscoverData]);
 
-  // ── User-Suche (Debounced) ────────────────────────────
+  // ── Tag Toggle ─────────────────────────────────────────
+  const toggleTag = (tag: string) => {
+    setActiveTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+  };
+
+  // ── User-Suche (Debounced) ─────────────────────────────
   const doSearch = useCallback(async (q: string) => {
     if (q.length < 2) {
       setSearchResults([]);
@@ -117,16 +142,14 @@ export default function DiscoverScreen() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, doSearch]);
 
-  // ── Verbinden ─────────────────────────────────────────
+  // ── Verbinden ──────────────────────────────────────────
   const handleConnect = async (user: UserWithStatus) => {
     try {
       await sendConnectionRequest(user.id);
       setSearchResults((prev) =>
         prev.map((u) => u.id === user.id ? { ...u, connectionStatus: 'pending_outgoing' } : u),
       );
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   // ── Event beitreten/verlassen ──────────────────────────
@@ -135,15 +158,10 @@ export default function DiscoverScreen() {
     try {
       const res = await joinEvent(eventId);
       setEvents((prev) =>
-        prev.map((e) =>
-          e.id === eventId ? { ...e, has_joined: true, participants_count: res.participants_count } : e,
-        ),
+        prev.map((e) => e.id === eventId ? { ...e, has_joined: true, participants_count: res.participants_count } : e),
       );
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setJoiningEvent((s) => ({ ...s, [eventId]: false }));
-    }
+    } catch (e) { console.error(e); }
+    finally { setJoiningEvent((s) => ({ ...s, [eventId]: false })); }
   };
 
   const handleLeaveEvent = async (eventId: string) => {
@@ -151,18 +169,32 @@ export default function DiscoverScreen() {
     try {
       const res = await leaveEvent(eventId);
       setEvents((prev) =>
-        prev.map((e) =>
-          e.id === eventId ? { ...e, has_joined: false, participants_count: res.participants_count } : e,
-        ),
+        prev.map((e) => e.id === eventId ? { ...e, has_joined: false, participants_count: res.participants_count } : e),
       );
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setJoiningEvent((s) => ({ ...s, [eventId]: false }));
-    }
+    } catch (e) { console.error(e); }
+    finally { setJoiningEvent((s) => ({ ...s, [eventId]: false })); }
   };
 
-  // ── Status Label ──────────────────────────────────────
+  // ── Place speichern ────────────────────────────────────
+  const handleSavePlace = async (placeId: string) => {
+    setSavingPlace((s) => ({ ...s, [placeId]: true }));
+    try {
+      await savePlace(placeId);
+      setPlaces((prev) => prev.map((p) => p.id === placeId ? { ...p, is_saved: true } : p));
+    } catch (e) { console.error(e); }
+    finally { setSavingPlace((s) => ({ ...s, [placeId]: false })); }
+  };
+
+  const handleUnsavePlace = async (placeId: string) => {
+    setSavingPlace((s) => ({ ...s, [placeId]: true }));
+    try {
+      await unsavePlace(placeId);
+      setPlaces((prev) => prev.map((p) => p.id === placeId ? { ...p, is_saved: false } : p));
+    } catch (e) { console.error(e); }
+    finally { setSavingPlace((s) => ({ ...s, [placeId]: false })); }
+  };
+
+  // ── Helpers ────────────────────────────────────────────
   const getStatusLabel = (status: ConnectionStatus) => {
     switch (status) {
       case 'connected': return 'Verbunden';
@@ -172,7 +204,6 @@ export default function DiscoverScreen() {
     }
   };
 
-  // ── Datum formatieren ─────────────────────────────────
   const formatEventDate = (dateStr: string) => {
     const d = new Date(dateStr);
     const day = d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -180,42 +211,50 @@ export default function DiscoverScreen() {
     return `${day} · ${time}`;
   };
 
-  // ── Suchergebnis rendern ──────────────────────────────
+  const renderStars = (rating: number) => {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      stars.push(
+        <Icon key={i} name={i <= Math.round(rating) ? 'star-filled' : 'star'} size={12} color={i <= Math.round(rating) ? colors.gold : colors.textMuted} />,
+      );
+    }
+    return stars;
+  };
+
+  // ── Renderers ──────────────────────────────────────────
   const renderSearchUser = ({ item }: { item: UserWithStatus }) => {
     const name = item.display_name ?? item.username ?? 'Anonym';
     const initial = name.slice(0, 1).toUpperCase();
     const isMe = item.id === userId;
     return (
-      <View style={styles.card}>
-        <View style={[styles.avatar, item.is_first_light && styles.avatarFirstLight]}>
+      <View style={[styles.card, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
+        <View style={[styles.avatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }, item.is_first_light && { borderColor: colors.goldBorder }]}>
           {item.avatar_url ? (
             <Image source={{ uri: item.avatar_url }} style={styles.avatarImg} />
           ) : (
-            <Text style={styles.avatarText}>{initial}</Text>
+            <Text style={[styles.avatarText, { color: colors.goldDeep }]}>{initial}</Text>
           )}
         </View>
         <View style={styles.cardInfo}>
           <View style={styles.nameRow}>
-            <Text style={styles.cardName} numberOfLines={1}>{name}</Text>
+            <Text style={[styles.cardName, { color: colors.textH }]} numberOfLines={1}>{name}</Text>
             {item.is_first_light && (
-              <View style={styles.firstLightBadge}><Text style={styles.firstLightBadgeText}>FIRST LIGHT</Text></View>
+              <View style={[styles.firstLightBadge, { borderColor: colors.goldBorder, backgroundColor: colors.goldBg }]}>
+                <Text style={[styles.firstLightBadgeText, { color: colors.goldDeep }]}>FIRST LIGHT</Text>
+              </View>
             )}
           </View>
-          {item.username && <Text style={styles.cardHandle}>@{item.username}</Text>}
-          {item.bio && <Text style={styles.cardBio} numberOfLines={1}>{item.bio}</Text>}
+          {item.username && <Text style={[styles.cardHandle, { color: colors.textSec }]}>@{item.username}</Text>}
+          {item.bio && <Text style={[styles.cardBio, { color: colors.textMuted }]} numberOfLines={1}>{item.bio}</Text>}
         </View>
         {!isMe && (
           <TouchableOpacity
-            style={[
-              styles.actionBtn,
-              item.connectionStatus === 'connected' && styles.connectedBtn,
-              item.connectionStatus === 'pending_outgoing' && styles.pendingBtn,
-            ]}
+            style={[styles.actionBtn, { borderColor: colors.goldBorder }, item.connectionStatus === 'connected' && { borderColor: `${colors.success}44`, backgroundColor: `${colors.success}14` }, item.connectionStatus === 'pending_outgoing' && { borderColor: colors.goldBorderS }]}
             onPress={() => item.connectionStatus === 'none' && handleConnect(item)}
             disabled={item.connectionStatus !== 'none'}
             activeOpacity={0.7}
           >
-            <Text style={[styles.actionBtnText, item.connectionStatus !== 'none' && styles.actionBtnTextMuted]}>
+            <Text style={[styles.actionBtnText, { color: colors.goldDeep }, item.connectionStatus !== 'none' && { color: colors.textMuted }]}>
               {getStatusLabel(item.connectionStatus)}
             </Text>
           </TouchableOpacity>
@@ -224,31 +263,32 @@ export default function DiscoverScreen() {
     );
   };
 
-  // ── Nearby User rendern ───────────────────────────────
   const renderNearbyUser = ({ item }: { item: NearbyUser }) => {
     const name = item.display_name ?? item.username ?? 'Anonym';
     const initial = name.slice(0, 1).toUpperCase();
     return (
-      <View style={styles.card}>
-        <View style={[styles.avatar, item.is_first_light && styles.avatarFirstLight]}>
+      <View style={[styles.card, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
+        <View style={[styles.avatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }, item.is_first_light && { borderColor: colors.goldBorder }]}>
           {item.avatar_url ? (
             <Image source={{ uri: item.avatar_url }} style={styles.avatarImg} />
           ) : (
-            <Text style={styles.avatarText}>{initial}</Text>
+            <Text style={[styles.avatarText, { color: colors.goldDeep }]}>{initial}</Text>
           )}
         </View>
         <View style={styles.cardInfo}>
           <View style={styles.nameRow}>
-            <Text style={styles.cardName} numberOfLines={1}>{name}</Text>
+            <Text style={[styles.cardName, { color: colors.textH }]} numberOfLines={1}>{name}</Text>
             {item.is_first_light && (
-              <View style={styles.firstLightBadge}><Text style={styles.firstLightBadgeText}>FIRST LIGHT</Text></View>
+              <View style={[styles.firstLightBadge, { borderColor: colors.goldBorder, backgroundColor: colors.goldBg }]}>
+                <Text style={[styles.firstLightBadgeText, { color: colors.goldDeep }]}>FIRST LIGHT</Text>
+              </View>
             )}
           </View>
-          {item.username && <Text style={styles.cardHandle}>@{item.username}</Text>}
+          {item.username && <Text style={[styles.cardHandle, { color: colors.textSec }]}>@{item.username}</Text>}
           {item.location && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-              <Icon name="map-pin" size={11} color={COLORS.textMuted} />
-              <Text style={styles.cardMeta}>{item.location}</Text>
+              <Icon name="map-pin" size={11} color={colors.textMuted} />
+              <Text style={[styles.cardMeta, { color: colors.textMuted }]}>{item.location}</Text>
             </View>
           )}
         </View>
@@ -256,59 +296,42 @@ export default function DiscoverScreen() {
     );
   };
 
-  // ── Event rendern ─────────────────────────────────────
   const renderEvent = ({ item }: { item: SoEvent }) => {
     const creatorName = item.creator?.display_name ?? item.creator?.username ?? 'Anonym';
     const isCreator = userId === item.creator_id;
     const isFull = item.max_participants != null && item.participants_count >= item.max_participants;
     const isJoining = joiningEvent[item.id];
-
     return (
-      <View style={styles.eventCard}>
-        {/* Kategorie + Datum */}
+      <View style={[styles.eventCard, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
         <View style={styles.eventHeader}>
-          <View style={[styles.categoryBadge, item.category === 'course' && styles.courseBadge]}>
-            <Text style={[styles.categoryText, item.category === 'course' && styles.courseText]}>
-              {item.category === 'course' ? 'KURS' : 'MEETUP'}
-            </Text>
+          <View style={[styles.categoryBadge, { borderColor: colors.goldBorder, backgroundColor: colors.goldBg }]}>
+            <Text style={[styles.categoryText, { color: colors.goldDeep }]}>{item.category === 'course' ? 'KURS' : 'MEETUP'}</Text>
           </View>
-          <Text style={styles.eventDate}>{formatEventDate(item.starts_at)}</Text>
+          <Text style={[styles.eventDate, { color: colors.textMuted }]}>{formatEventDate(item.starts_at)}</Text>
         </View>
-
-        {/* Titel + Beschreibung */}
-        <Text style={styles.eventTitle}>{item.title}</Text>
-        {item.description && (
-          <Text style={styles.eventDesc} numberOfLines={2}>{item.description}</Text>
-        )}
-
-        {/* Ort */}
+        <Text style={[styles.eventTitle, { color: colors.textH }]}>{item.title}</Text>
+        {item.description && <Text style={[styles.eventDesc, { color: colors.textSec }]} numberOfLines={2}>{item.description}</Text>}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 }}>
-          <Icon name="map-pin" size={11} color={COLORS.textMuted} />
-          <Text style={[styles.eventLocation, { marginBottom: 0 }]}>{item.location_name}</Text>
+          <Icon name="map-pin" size={11} color={colors.textMuted} />
+          <Text style={[styles.eventLocation, { color: colors.textMuted }]}>{item.location_name}</Text>
         </View>
-
-        {/* Footer */}
-        <View style={styles.eventFooter}>
+        <View style={[styles.eventFooter, { borderTopColor: colors.divider }]}>
           <View style={styles.eventCreator}>
-            <Text style={styles.eventCreatorName}>{creatorName}</Text>
-            <Text style={styles.eventDot}>·</Text>
-            <Text style={styles.eventParticipants}>
+            <Text style={[styles.eventCreatorName, { color: colors.textSec }]}>{creatorName}</Text>
+            <Text style={{ fontSize: 11, color: colors.divider }}>·</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted }}>
               {item.participants_count}{item.max_participants ? `/${item.max_participants}` : ''} Teilnehmer
             </Text>
           </View>
           {userId && !isCreator && (
             <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                item.has_joined && styles.leaveBtn,
-                isFull && !item.has_joined && styles.fullBtn,
-              ]}
+              style={[styles.actionBtn, { borderColor: colors.goldBorder }, item.has_joined && { borderColor: colors.goldBorderS }, isFull && !item.has_joined && { borderColor: colors.goldBorderS, backgroundColor: colors.goldBg }]}
               onPress={() => item.has_joined ? handleLeaveEvent(item.id) : handleJoinEvent(item.id)}
               disabled={isJoining || (isFull && !item.has_joined)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.actionBtnText, item.has_joined && styles.actionBtnTextMuted]}>
-                {isJoining ? '…' : item.has_joined ? 'VERLASSEN' : isFull ? 'VOLL' : 'TEILNEHMEN'}
+              <Text style={[styles.actionBtnText, { color: colors.goldDeep }, item.has_joined && { color: colors.textMuted }]}>
+                {isJoining ? '...' : item.has_joined ? 'VERLASSEN' : isFull ? 'VOLL' : 'TEILNEHMEN'}
               </Text>
             </TouchableOpacity>
           )}
@@ -317,322 +340,262 @@ export default function DiscoverScreen() {
     );
   };
 
+  const renderPlace = ({ item }: { item: Place }) => {
+    const saving = savingPlace[item.id];
+    return (
+      <TouchableOpacity
+        style={[styles.eventCard, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}
+        onPress={() => router.push(`/places/${item.id}` as any)}
+        activeOpacity={0.7}
+      >
+        {item.cover_url && <Image source={{ uri: item.cover_url }} style={styles.placeCover} />}
+        {item.tags && item.tags.length > 0 && (
+          <View style={styles.tagsRow}>
+            {item.tags.slice(0, 3).map((tag) => (
+              <View key={tag} style={[styles.tagBadge, { backgroundColor: colors.goldBg, borderColor: colors.goldBorderS }]}>
+                <Text style={[styles.tagText, { color: colors.goldDeep }]}>{tag}</Text>
+              </View>
+            ))}
+            {item.tags.length > 3 && <Text style={[styles.tagMore, { color: colors.textMuted }]}>+{item.tags.length - 3}</Text>}
+          </View>
+        )}
+        <Text style={[styles.eventTitle, { color: colors.textH }]}>{item.name}</Text>
+        <View style={styles.ratingRow}>
+          {renderStars(item.avg_rating)}
+          <Text style={[styles.ratingText, { color: colors.textSec }]}>{item.avg_rating > 0 ? item.avg_rating.toFixed(1) : '—'}</Text>
+          <Text style={[styles.ratingCount, { color: colors.textMuted }]}>({item.reviews_count})</Text>
+        </View>
+        {(item.address || item.city) && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+            <Icon name="map-pin" size={11} color={colors.textMuted} />
+            <Text style={{ fontSize: 11, color: colors.textMuted }} numberOfLines={1}>{item.address ?? item.city}</Text>
+          </View>
+        )}
+        <View style={[styles.placeFooter, { borderTopColor: colors.divider }]}>
+          <Text style={{ fontSize: 11, color: colors.textMuted }}>{item.saves_count} gespeichert</Text>
+          <TouchableOpacity onPress={() => item.is_saved ? handleUnsavePlace(item.id) : handleSavePlace(item.id)} disabled={saving} activeOpacity={0.7}>
+            <Icon name={item.is_saved ? 'bookmark-filled' : 'bookmark'} size={18} color={item.is_saved ? colors.gold : colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  // ── Segment Config ─────────────────────────────────────
+  const SEGMENTS: { key: Segment; label: string; icon: 'map' | 'users' | 'compass' | 'building' }[] = [
+    { key: 'alle', label: 'Alle', icon: 'map' },
+    { key: 'mitglieder', label: 'Mitglieder', icon: 'users' },
+    { key: 'events', label: 'Events', icon: 'compass' },
+    { key: 'orte', label: 'Orte', icon: 'building' },
+  ];
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* ── FULLSCREEN KARTEN-PLATZHALTER (Hintergrund) ──── */}
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.bgGradientStart }]}>
+      {/* Fullscreen Karten-Platzhalter */}
       <View style={StyleSheet.absoluteFill}>
-        <View style={styles.mapFull}>
-          <Icon name="map" size={48} color={COLORS.textMuted} />
-          <Text style={styles.mapPlaceholderText}>Karte verfuegbar im Development Build</Text>
+        <View style={[styles.mapFull, { backgroundColor: colors.bgGradientEnd }]}>
+          <Icon name="map" size={48} color={colors.textMuted} />
+          <Text style={[styles.mapPlaceholderText, { color: colors.textMuted }]}>Karte verfuegbar im Development Build</Text>
         </View>
       </View>
 
-      {/* ── FLOATING HEADER + SUCHE ────────────────────────── */}
-      <View style={[styles.floatingHeader, { paddingTop: insets.top + 12 }]}>
+      {/* Floating Header */}
+      <View style={[styles.floatingHeader, { paddingTop: insets.top + 12, backgroundColor: `${colors.bgGradientStart}DD` }]}>
         <View style={styles.headerRow}>
-          <Icon name="compass" size={22} color={COLORS.goldDeep} />
-          <Text style={styles.headerTitle}>DISCOVER</Text>
+          <Icon name="compass" size={22} color={colors.goldDeep} />
+          <Text style={[styles.headerTitle, { color: colors.goldDeep }]}>DISCOVER</Text>
         </View>
         <View style={styles.searchContainer}>
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { backgroundColor: colors.glass, borderColor: colors.glassBorder, color: colors.textH }]}
             value={query}
             onChangeText={setQuery}
             placeholder="Souls suchen ..."
-            placeholderTextColor="#9A8870"
+            placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
           />
         </View>
-      </View>
 
-      {/* ── SUCHE AKTIV → Liste ────────────────────────────── */}
-      {isSearchActive ? (
-        <View style={[styles.searchOverlay, { paddingTop: insets.top + 100 }]}>
-          {searching ? (
-            <View style={styles.center}>
-              <ActivityIndicator color="#9A7218" />
-            </View>
-          ) : searchResults.length === 0 && searched ? (
-            <View style={styles.center}>
-              <Text style={styles.hintTitle}>Keine Ergebnisse</Text>
-              <Text style={styles.emptyText}>Versuche einen anderen Suchbegriff.</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={searchResults}
-              keyExtractor={(item) => item.id}
-              renderItem={renderSearchUser}
-              contentContainerStyle={styles.listContent}
-            />
-          )}
-        </View>
-      ) : (
-        /* ── DISCOVER-MODUS: Floating Bottom Cards ─────────── */
-        <View style={styles.bottomPanel}>
-          {/* Segment Toggle */}
-          <View style={styles.segmentRow}>
-            {(['nearby', 'events'] as DiscoverTab[]).map((t) => (
+        {/* Segment Toggle */}
+        {!isSearchActive && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.segmentRow}>
+            {SEGMENTS.map((seg) => (
               <TouchableOpacity
-                key={t}
-                style={[styles.segmentBtn, tab === t && styles.segmentBtnActive]}
-                onPress={() => setTab(t)}
+                key={seg.key}
+                style={[styles.segmentBtn, { backgroundColor: colors.glass, borderColor: colors.glassBorder }, segment === seg.key && { backgroundColor: colors.goldBg, borderColor: colors.goldBorder }]}
+                onPress={() => setSegment(seg.key)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.segmentText, tab === t && styles.segmentTextActive]}>
-                  {t === 'nearby' ? `In der Naehe (${nearbyUsers.length})` : `Events (${events.length})`}
+                <Icon name={seg.icon} size={12} color={segment === seg.key ? colors.goldDeep : colors.textMuted} />
+                <Text style={[styles.segmentText, { color: colors.textMuted }, segment === seg.key && { color: colors.goldDeep }]}>
+                  {seg.label}
+                  {seg.key === 'mitglieder' && nearbyUsers.length > 0 ? ` (${nearbyUsers.length})` : ''}
+                  {seg.key === 'events' && events.length > 0 ? ` (${events.length})` : ''}
+                  {seg.key === 'orte' && places.length > 0 ? ` (${places.length})` : ''}
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
+        )}
 
-          {/* Tab: Nearby */}
-          {tab === 'nearby' && (
-            loadingNearby ? (
-              <View style={styles.centerSmall}>
-                <ActivityIndicator color="#9A7218" />
-              </View>
-            ) : nearbyUsers.length === 0 ? (
-              <View style={styles.centerSmall}>
-                <Text style={styles.hintTitle}>Keine Souls in der Naehe</Text>
-                <Text style={styles.emptyText}>
-                  Setze deinen Standort im Profil, um Souls in deiner Naehe zu finden.
-                </Text>
-              </View>
-            ) : (
-              <FlatList
-                data={nearbyUsers}
-                keyExtractor={(item) => item.id}
-                renderItem={renderNearbyUser}
-                contentContainerStyle={styles.listContent}
-                showsVerticalScrollIndicator={false}
-              />
-            )
+        {/* Tag Filter */}
+        {!isSearchActive && (segment === 'orte' || segment === 'alle') && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagsFilterRow}>
+            {PLACE_TAGS.slice(0, 15).map((tag) => (
+              <TouchableOpacity
+                key={tag}
+                style={[styles.tagFilterBtn, { borderColor: colors.divider }, activeTags.includes(tag) && { backgroundColor: colors.goldBg, borderColor: colors.goldBorder }]}
+                onPress={() => toggleTag(tag)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tagFilterText, { color: colors.textMuted }, activeTags.includes(tag) && { color: colors.goldDeep }]}>{tag}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+
+      {/* Suche */}
+      {isSearchActive ? (
+        <View style={[styles.searchOverlay, { paddingTop: insets.top + 100, backgroundColor: colors.bgGradientStart }]}>
+          {searching ? (
+            <View style={styles.center}><ActivityIndicator color={colors.goldText} /></View>
+          ) : searchResults.length === 0 && searched ? (
+            <View style={styles.center}>
+              <Text style={[styles.hintTitle, { color: colors.goldDeep }]}>Keine Ergebnisse</Text>
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>Versuche einen anderen Suchbegriff.</Text>
+            </View>
+          ) : (
+            <FlatList data={searchResults} keyExtractor={(item) => item.id} renderItem={renderSearchUser} contentContainerStyle={styles.listContent} />
           )}
-
-          {/* Tab: Events */}
-          {tab === 'events' && (
-            loadingEvents ? (
+        </View>
+      ) : segment === 'alle' ? null : (
+        <View style={[styles.bottomPanel, { backgroundColor: `${colors.bgGradientStart}EE` }]}>
+          {segment === 'mitglieder' && (
+            loadingNearby ? <View style={styles.centerSmall}><ActivityIndicator color={colors.goldText} /></View>
+            : nearbyUsers.length === 0 ? (
               <View style={styles.centerSmall}>
-                <ActivityIndicator color="#9A7218" />
+                <Text style={[styles.hintTitle, { color: colors.goldDeep }]}>Keine Souls in der Naehe</Text>
+                <Text style={[styles.emptyText, { color: colors.textMuted }]}>Setze deinen Standort im Profil.</Text>
               </View>
-            ) : events.length === 0 ? (
+            ) : <FlatList data={nearbyUsers} keyExtractor={(item) => item.id} renderItem={renderNearbyUser} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} />
+          )}
+          {segment === 'events' && (
+            loadingEvents ? <View style={styles.centerSmall}><ActivityIndicator color={colors.goldText} /></View>
+            : events.length === 0 ? (
               <View style={styles.centerSmall}>
-                <Text style={styles.hintTitle}>Keine Events in der Naehe</Text>
-                <Text style={styles.emptyText}>
-                  Erstelle ein Meetup oder Kurs, um die Community zu vernetzen.
-                </Text>
+                <Text style={[styles.hintTitle, { color: colors.goldDeep }]}>Keine Events in der Naehe</Text>
+                <Text style={[styles.emptyText, { color: colors.textMuted }]}>Erstelle ein Meetup oder Kurs.</Text>
               </View>
-            ) : (
-              <FlatList
-                data={events}
-                keyExtractor={(item) => item.id}
-                renderItem={renderEvent}
-                contentContainerStyle={styles.listContent}
-                showsVerticalScrollIndicator={false}
-              />
-            )
+            ) : <FlatList data={events} keyExtractor={(item) => item.id} renderItem={renderEvent} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} />
+          )}
+          {segment === 'orte' && (
+            loadingPlaces ? <View style={styles.centerSmall}><ActivityIndicator color={colors.goldText} /></View>
+            : places.length === 0 ? (
+              <View style={styles.centerSmall}>
+                <Text style={[styles.hintTitle, { color: colors.goldDeep }]}>Keine Soul Places</Text>
+                <Text style={[styles.emptyText, { color: colors.textMuted }]}>In dieser Gegend gibt es noch keine Orte.</Text>
+              </View>
+            ) : <FlatList data={places} keyExtractor={(item) => item.id} renderItem={renderPlace} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} />
           )}
         </View>
       )}
+
+      {/* FAB – Place erstellen (nur bei Orte-Segment) */}
+      {userId && segment === 'orte' && !isSearchActive && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => setShowCreatePlace(true)}
+          activeOpacity={0.8}
+        >
+          <Icon name="map-pin" size={22} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      {/* CreatePlaceModal */}
+      <CreatePlaceModal
+        visible={showCreatePlace}
+        onClose={() => setShowCreatePlace(false)}
+        onCreated={() => {
+          setShowCreatePlace(false);
+          loadDiscoverData();
+        }}
+      />
     </View>
   );
 }
 
-// ── HELLES DESIGN-SYSTEM ──────────────────────────────────
-const COLORS = {
-  bg:        '#F5EFE6',
-  bgCard:    '#EDE4D3',
-  card:      'rgba(255,255,255,0.85)',
-  cardBorder:'rgba(200,169,110,0.25)',
-  gold:      '#C8A96E',
-  goldText:  '#9A7218',
-  goldDeep:  '#7A6014',
-  goldBg:    'rgba(200,169,110,0.12)',
-  textH:     '#1E180C',
-  textBody:  '#3E3020',
-  textSec:   '#7A6040',
-  textMuted: '#9A8870',
-  avatarBg:  'rgba(200,169,110,0.15)',
-  divider:   'rgba(139,105,20,0.12)',
-  glass:     'rgba(255,255,255,0.72)',
-  success:   '#2D8A56',
-  successBg: 'rgba(45,138,86,0.10)',
-  purple:    '#7A5FA0',
-  purpleBg:  'rgba(122,95,160,0.10)',
-  purpleBorder: 'rgba(122,95,160,0.30)',
-};
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   centerSmall: { paddingVertical: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-
-  // ── Fullscreen Karten-Platzhalter ──────────────────────
-  mapFull: {
-    flex: 1,
-    backgroundColor: COLORS.bgCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapPlaceholderIcon: { fontSize: 48, marginBottom: 12, opacity: 0.5 },
-  mapPlaceholderText: { fontSize: 12, color: COLORS.textMuted, letterSpacing: 1 },
-
-  // ── Floating Header ────────────────────────────────────
-  floatingHeader: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    zIndex: 10,
-    backgroundColor: 'rgba(245,239,230,0.88)',
-    paddingBottom: 4,
-  },
-  headerRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 20, paddingBottom: 8,
-  },
-  headerIcon: { fontSize: 22, color: COLORS.goldDeep },
-  headerTitle: { fontSize: 11, letterSpacing: 4, color: COLORS.goldDeep },
-
-  // ── Suche ──────────────────────────────────────────────
+  mapFull: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  mapPlaceholderText: { fontSize: 12, letterSpacing: 1 },
+  floatingHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingBottom: 4 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingBottom: 8 },
+  headerTitle: { fontSize: 11, letterSpacing: 4 },
   searchContainer: { paddingHorizontal: 16, paddingBottom: 8 },
-  searchInput: {
-    backgroundColor: COLORS.glass,
-    borderWidth: 1, borderColor: COLORS.cardBorder,
-    borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12,
-    color: COLORS.textH, fontSize: 14,
-  },
-
-  // ── Such-Overlay (deckt Karte ab) ──────────────────────
-  searchOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.bg,
-    zIndex: 5,
-  },
-
-  // ── Bottom Panel (schwebt ueber Karte) ─────────────────
+  searchInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14 },
+  searchOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
   bottomPanel: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    maxHeight: '55%',
-    backgroundColor: 'rgba(245,239,230,0.92)',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 16,
-    zIndex: 5,
-    // Schatten
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 8,
+    position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '55%',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, zIndex: 5,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 8,
   },
-
-  // ── Segment Toggle ─────────────────────────────────────
-  segmentRow: {
-    flexDirection: 'row', gap: 8,
-    paddingHorizontal: 16, marginBottom: 12,
-  },
-  segmentBtn: {
-    flex: 1, paddingVertical: 10, borderRadius: 14,
-    backgroundColor: COLORS.card, borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    alignItems: 'center',
-  },
-  segmentBtnActive: {
-    backgroundColor: COLORS.goldBg,
-    borderColor: 'rgba(200,169,110,0.45)',
-  },
-  segmentText: { fontSize: 10, letterSpacing: 1, color: COLORS.textMuted },
-  segmentTextActive: { color: COLORS.goldDeep },
-
-  // ── Listen ─────────────────────────────────────────────
+  segmentRow: { paddingHorizontal: 16, gap: 6, paddingBottom: 8 },
+  segmentBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
+  segmentText: { fontSize: 10, letterSpacing: 0.8 },
+  tagsFilterRow: { paddingHorizontal: 16, gap: 6, paddingBottom: 8 },
+  tagFilterBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 99, borderWidth: 1 },
+  tagFilterText: { fontSize: 9, letterSpacing: 0.5 },
   listContent: { paddingHorizontal: 16, paddingBottom: 16 },
-  hintTitle: { fontSize: 20, fontWeight: '300', color: COLORS.goldDeep, marginBottom: 8, letterSpacing: 1 },
-  emptyText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center' },
-
-  // ── Karten (User + Nearby) ─────────────────────────────
+  hintTitle: { fontSize: 20, fontWeight: '400', marginBottom: 8, letterSpacing: 1 },
+  emptyText: { fontSize: 13, textAlign: 'center' },
   card: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: COLORS.card, borderRadius: 16, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.cardBorder,
-    // Leichter Schatten
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, padding: 14,
+    marginBottom: 10, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
   },
-  avatar: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: COLORS.avatarBg,
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.3)',
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-  },
-  avatarFirstLight: { borderColor: 'rgba(200,169,110,0.6)' },
+  avatar: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImg: { width: 44, height: 44, borderRadius: 22 },
-  avatarText: { fontSize: 17, color: COLORS.goldDeep, fontWeight: '300' },
+  avatarText: { fontSize: 17, fontWeight: '400' },
   cardInfo: { flex: 1 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  cardName: { fontSize: 14, color: COLORS.textH, fontWeight: '500' },
-  cardHandle: { fontSize: 12, color: COLORS.textSec, marginTop: 1 },
-  cardBio: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
-  cardMeta: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
-  firstLightBadge: {
-    paddingHorizontal: 5, paddingVertical: 1,
-    borderRadius: 99, borderWidth: 1,
-    borderColor: 'rgba(200,169,110,0.4)', backgroundColor: COLORS.goldBg,
-  },
-  firstLightBadgeText: { fontSize: 7, letterSpacing: 2, color: COLORS.goldDeep },
-
-  // ── Action Buttons ─────────────────────────────────────
-  actionBtn: {
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 99, borderWidth: 1,
-    borderColor: 'rgba(200,169,110,0.4)',
-  },
-  connectedBtn: { borderColor: 'rgba(45,138,86,0.3)', backgroundColor: 'rgba(45,138,86,0.08)' },
-  pendingBtn: { borderColor: 'rgba(200,169,110,0.25)' },
-  leaveBtn: { borderColor: 'rgba(139,105,20,0.2)' },
-  fullBtn: { borderColor: 'rgba(139,105,20,0.15)', backgroundColor: 'rgba(139,105,20,0.05)' },
-  actionBtnText: { fontSize: 8, letterSpacing: 2, color: COLORS.goldDeep },
-  actionBtnTextMuted: { color: COLORS.textMuted },
-
-  // ── Event Cards ────────────────────────────────────────
+  cardName: { fontSize: 14, fontWeight: '500' },
+  cardHandle: { fontSize: 12, marginTop: 1 },
+  cardBio: { fontSize: 12, marginTop: 2 },
+  cardMeta: { fontSize: 11, marginTop: 2 },
+  firstLightBadge: { paddingHorizontal: 5, paddingVertical: 1, borderRadius: 99, borderWidth: 1 },
+  firstLightBadgeText: { fontSize: 7, letterSpacing: 2 },
+  actionBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, borderWidth: 1 },
+  actionBtnText: { fontSize: 8, letterSpacing: 2 },
   eventCard: {
-    backgroundColor: COLORS.card, borderRadius: 16, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: COLORS.cardBorder,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
   },
-  eventHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 8,
-  },
-  categoryBadge: {
-    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99,
-    borderWidth: 1, borderColor: 'rgba(200,169,110,0.4)',
-    backgroundColor: COLORS.goldBg,
-  },
-  courseBadge: {
-    borderColor: COLORS.purpleBorder,
-    backgroundColor: COLORS.purpleBg,
-  },
-  categoryText: { fontSize: 7, letterSpacing: 2, color: COLORS.goldDeep },
-  courseText: { color: COLORS.purple },
-  eventDate: { fontSize: 11, color: COLORS.textMuted },
-  eventTitle: { fontSize: 14, color: COLORS.textH, fontWeight: '500', marginBottom: 4 },
-  eventDesc: { fontSize: 12, color: COLORS.textSec, lineHeight: 18, marginBottom: 8 },
-  eventLocation: { fontSize: 11, color: COLORS.textMuted, marginBottom: 10 },
-  eventFooter: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', paddingTop: 10,
-    borderTopWidth: 1, borderTopColor: COLORS.divider,
-  },
+  eventHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  categoryBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99, borderWidth: 1 },
+  categoryText: { fontSize: 7, letterSpacing: 2 },
+  eventDate: { fontSize: 11 },
+  eventTitle: { fontSize: 14, fontWeight: '500', marginBottom: 4 },
+  eventDesc: { fontSize: 12, lineHeight: 18, marginBottom: 8 },
+  eventLocation: { fontSize: 11 },
+  eventFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTopWidth: 1 },
   eventCreator: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  eventCreatorName: { fontSize: 11, color: COLORS.textSec },
-  eventDot: { fontSize: 11, color: COLORS.divider },
-  eventParticipants: { fontSize: 11, color: COLORS.textMuted },
+  eventCreatorName: { fontSize: 11 },
+  placeCover: { width: '100%', height: 120, borderRadius: 12, marginBottom: 8 },
+  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 6 },
+  tagBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 99, borderWidth: 1 },
+  tagText: { fontSize: 8, letterSpacing: 1 },
+  tagMore: { fontSize: 9, marginLeft: 2 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 6 },
+  ratingText: { fontSize: 12, fontWeight: '500', marginLeft: 4 },
+  ratingCount: { fontSize: 10 },
+  placeFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTopWidth: 1 },
+  fab: {
+    position: 'absolute', bottom: 24, right: 16, width: 56, height: 56, borderRadius: 28,
+    backgroundColor: '#A8894E', alignItems: 'center', justifyContent: 'center', zIndex: 20,
+    shadowColor: '#C8A96E', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8,
+  },
 });

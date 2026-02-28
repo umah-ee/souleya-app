@@ -4,11 +4,18 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter, useSegments } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/auth';
+import { useThemeStore } from '../store/theme';
 
 function RootLayoutNav() {
   const { session, setSession, setLoading } = useAuthStore();
+  const themeMode = useThemeStore((s) => s.mode);
+  const loadSavedTheme = useThemeStore((s) => s.loadSavedTheme);
   const router = useRouter();
   const segments = useSegments();
+
+  useEffect(() => {
+    loadSavedTheme();
+  }, []);
 
   useEffect(() => {
     // Check initial session
@@ -42,14 +49,17 @@ function RootLayoutNav() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="chat/[channelId]" options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="places/[id]" options={{ animation: 'slide_from_right' }} />
     </Stack>
   );
 }
 
 export default function RootLayout() {
+  const themeMode = useThemeStore((s) => s.mode);
+
   return (
     <>
-      <StatusBar style="light" />
+      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
       <RootLayoutNav />
     </>
   );

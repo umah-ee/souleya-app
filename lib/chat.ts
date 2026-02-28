@@ -1,7 +1,8 @@
 import { apiFetch } from './api';
+import { supabase } from './supabase';
 import type {
   ChannelOverview, ChannelDetail, Channel,
-  Message, ReactionSummary, UnreadCount,
+  Message, ReactionSummary, UnreadCount, PollResult,
 } from '../types/chat';
 
 // ══════════════════════════════════════════════════════════════
@@ -131,4 +132,72 @@ export async function markChannelAsRead(channelId: string) {
 
 export async function fetchUnreadCounts() {
   return apiFetch<UnreadCount[]>('/chat/unread');
+}
+
+// ══════════════════════════════════════════════════════════════
+// POLLS
+// ══════════════════════════════════════════════════════════════
+
+export async function createPoll(channelId: string, data: {
+  question: string;
+  options: string[];
+  multiple_choice?: boolean;
+  is_anonymous?: boolean;
+  expires_at?: string;
+}) {
+  return apiFetch<Message>(`/chat/channels/${channelId}/polls`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function votePoll(pollId: string, optionId: string) {
+  return apiFetch<PollResult>(`/chat/polls/${pollId}/vote`, {
+    method: 'POST',
+    body: JSON.stringify({ option_id: optionId }),
+  });
+}
+
+export async function getPollResults(pollId: string) {
+  return apiFetch<PollResult>(`/chat/polls/${pollId}`);
+}
+
+// ══════════════════════════════════════════════════════════════
+// SEEDS TRANSFER
+// ══════════════════════════════════════════════════════════════
+
+export async function transferSeeds(channelId: string, data: {
+  amount: number;
+  message?: string;
+  to_user_id?: string;
+}) {
+  return apiFetch<{ success: boolean; message_id: string; new_balance: number }>(
+    `/chat/channels/${channelId}/seeds`,
+    { method: 'POST', body: JSON.stringify(data) },
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// IMAGE UPLOAD
+// ══════════════════════════════════════════════════════════════
+
+export async function uploadChatImage(uri: string, userId: string): Promise<string> {
+  const ext = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const path = `${userId}/${Date.now()}.${ext}`;
+
+  // URI in Blob konvertieren fuer Supabase Upload
+  const response = await fetch(uri);
+  const blob = await response.blob();
+
+  const { error } = await supabase.storage
+    .from('chat-images')
+    .upload(path, blob, { contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`, upsert: false });
+
+  if (error) throw new Error(`Upload fehlgeschlagen: ${error.message}`);
+
+  const { data: { publicUrl } } = supabase.storage
+    .from('chat-images')
+    .getPublicUrl(path);
+
+  return publicUrl;
 }

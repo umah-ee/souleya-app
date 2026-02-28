@@ -6,18 +6,24 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../store/auth';
 import { useChatStore } from '../../store/chat';
+import { useThemeStore } from '../../store/theme';
 import type { ChannelDetail, Message, ReactionSummary } from '../../types/chat';
 import {
   fetchChannel, fetchMessages, sendMessage, markChannelAsRead,
   deleteMessage as apiDeleteMessage, editMessage as apiEditMessage,
-  addReaction, removeReaction,
+  addReaction, removeReaction, uploadChatImage,
 } from '../../lib/chat';
 import { supabase } from '../../lib/supabase';
 import { Icon } from '../../components/Icon';
+import PollBubble from '../../components/chat/PollBubble';
+import CreatePollModal from '../../components/chat/CreatePollModal';
+import SeedsTransferModal from '../../components/chat/SeedsTransferModal';
+import GroupInfoSheet from '../../components/chat/GroupInfoSheet';
 
-// Häufig verwendete Emojis für den Reaktions-Picker
+// Haeufig verwendete Emojis fuer den Reaktions-Picker
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '👏', '🙏', '✨', '🔥', '🕊️', '🌿', '💛'];
 
 type ReactionsMap = Record<string, ReactionSummary[]>;
@@ -27,6 +33,7 @@ export default function ChatRoomScreen() {
   const router = useRouter();
   const session = useAuthStore((s) => s.session);
   const setTotalUnread = useChatStore((s) => s.setTotalUnread);
+  const colors = useThemeStore((s) => s.colors);
   const userId = session?.user?.id;
 
   const [channel, setChannel] = useState<ChannelDetail | null>(null);
@@ -45,6 +52,14 @@ export default function ChatRoomScreen() {
   const [emojiPickerMsg, setEmojiPickerMsg] = useState<Message | null>(null);
   const [reactions, setReactions] = useState<ReactionsMap>({});
 
+  // Neue Features: Polls, Seeds, Images, GroupInfo
+  const [showPollForm, setShowPollForm] = useState(false);
+  const [showSeedsModal, setShowSeedsModal] = useState(false);
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [pollRefreshTrigger, setPollRefreshTrigger] = useState(0);
+
   const flatListRef = useRef<FlatList>(null);
 
   // ── Daten laden ───────────────────────────────────────────
@@ -60,8 +75,7 @@ export default function ChatRoomScreen() {
       setHasMore(msgs.hasMore);
       setPage(1);
       await markChannelAsRead(channelId);
-      setTotalUnread(0); // Kanal wurde geöffnet – lokaler Reset
-      // Reactions für geladene Nachrichten laden
+      setTotalUnread(0);
       loadReactionsForMessages(msgs.data.map((m) => m.id));
     } catch (e) {
       console.error(e);
@@ -85,7 +99,6 @@ export default function ChatRoomScreen() {
 
       if (!data) return;
 
-      // Gruppieren nach message_id + emoji
       const map: ReactionsMap = {};
       for (const row of data) {
         if (!map[row.message_id]) map[row.message_id] = [];
@@ -177,6 +190,14 @@ export default function ChatRoomScreen() {
           });
         },
       )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'poll_votes' },
+        () => {
+          // Trigger PollBubble re-fetch
+          setPollRefreshTrigger((prev) => prev + 1);
+        },
+      )
       .subscribe();
 
     return () => {
@@ -251,7 +272,7 @@ export default function ChatRoomScreen() {
     setText('');
   };
 
-  // ── Nachricht löschen ─────────────────────────────────────
+  // ── Nachricht loeschen ─────────────────────────────────────
   const handleDelete = async (msgId: string) => {
     setActionMsg(null);
     try {
@@ -285,6 +306,67 @@ export default function ChatRoomScreen() {
     }
   };
 
+  const handleEmojiSelectDirect = async (msgId: string, emoji: string, hasReacted: boolean) => {
+    try {
+      if (hasReacted) {
+        await removeReaction(msgId, emoji);
+      } else {
+        await addReaction(msgId, emoji);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // ── Bild auswaehlen ───────────────────────────────────────
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsMultipleSelection: false,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setImageUri(result.assets[0].uri);
+    }
+  };
+
+  const handleSendImage = async () => {
+    if (!imageUri || !userId || !channelId || uploadingImage) return;
+    setUploadingImage(true);
+    try {
+      const publicUrl = await uploadChatImage(imageUri, userId);
+      const msg = await sendMessage(channelId, { type: 'image', content: publicUrl });
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+      setImageUri(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleCancelImage = () => {
+    setImageUri(null);
+  };
+
+  // ── Poll erstellt ─────────────────────────────────────────
+  const handlePollCreated = (msg: Message) => {
+    setShowPollForm(false);
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === msg.id)) return prev;
+      return [...prev, msg];
+    });
+  };
+
+  // ── Seeds gesendet ────────────────────────────────────────
+  const handleSeedsSent = () => {
+    setShowSeedsModal(false);
+    // Die Nachricht kommt per Realtime
+  };
+
   // ── Channel-Name ──────────────────────────────────────────
   const getChannelName = () => {
     if (!channel) return '';
@@ -301,6 +383,8 @@ export default function ChatRoomScreen() {
     return partner?.profile.avatar_url ?? null;
   };
 
+  const isGroupChannel = channel && channel.type !== 'direct';
+
   // ── Message Bubble ────────────────────────────────────────
   const renderMessage = ({ item: msg, index }: { item: Message; index: number }) => {
     const isOwn = msg.user_id === userId;
@@ -309,6 +393,7 @@ export default function ChatRoomScreen() {
     const authorName = msg.author?.display_name ?? msg.author?.username ?? 'Anonym';
     const msgReactions = reactions[msg.id] ?? [];
 
+    // System-Nachricht
     if (msg.type === 'system') {
       return (
         <View style={styles.systemRow}>
@@ -317,6 +402,86 @@ export default function ChatRoomScreen() {
       );
     }
 
+    // Seeds-Nachricht
+    if (msg.type === 'seeds') {
+      const seedsAmount = (msg.metadata?.amount as number) ?? msg.content;
+      return (
+        <View style={styles.seedsRow}>
+          <View style={[styles.seedsCard, { backgroundColor: colors.goldBg, borderColor: colors.goldBorderS }]}>
+            <Icon name="seedling" size={18} color={colors.gold} />
+            <Text style={[styles.seedsAmount, { color: colors.gold }]}>{seedsAmount} Seeds</Text>
+            <Text style={[styles.seedsSub, { color: colors.textMuted }]}>
+              {isOwn ? 'gesendet' : `von ${authorName}`}
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    // Poll-Nachricht
+    if (msg.type === 'poll') {
+      return (
+        <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
+          <View style={{ maxWidth: '85%' }}>
+            {showAuthor && <Text style={styles.bubbleAuthor}>{authorName}</Text>}
+            <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
+              <PollBubble
+                message={msg}
+                currentUserId={userId ?? ''}
+                refreshTrigger={pollRefreshTrigger}
+              />
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // Image-Nachricht
+    if (msg.type === 'image' && msg.content) {
+      return (
+        <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
+          <View style={{ maxWidth: '75%' }}>
+            {showAuthor && <Text style={styles.bubbleAuthor}>{authorName}</Text>}
+            <TouchableOpacity
+              style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther, { padding: 4 }]}
+              activeOpacity={0.8}
+              onLongPress={() => setActionMsg(msg)}
+            >
+              <Image
+                source={{ uri: msg.content }}
+                style={styles.imageMsg}
+                resizeMode="cover"
+              />
+              <View style={[styles.bubbleMeta, isOwn && { alignSelf: 'flex-end' }, { marginTop: 4, paddingHorizontal: 6 }]}>
+                {msg.edited_at && <Text style={styles.bubbleEdited}>bearbeitet</Text>}
+                <Text style={styles.bubbleTime}>
+                  {new Date(msg.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Reactions */}
+            {msgReactions.length > 0 && (
+              <View style={[styles.reactionsRow, isOwn && { justifyContent: 'flex-end' }]}>
+                {msgReactions.map((r) => (
+                  <TouchableOpacity
+                    key={r.emoji}
+                    style={[styles.reactionChip, r.has_reacted && styles.reactionChipOwn]}
+                    onPress={() => handleEmojiSelectDirect(msg.id, r.emoji, r.has_reacted)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.reactionEmoji}>{r.emoji}</Text>
+                    {r.count > 1 && <Text style={styles.reactionCount}>{r.count}</Text>}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        </View>
+      );
+    }
+
+    // Text-Nachricht (default)
     return (
       <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
         <View style={{ maxWidth: '75%' }}>
@@ -371,55 +536,52 @@ export default function ChatRoomScreen() {
     );
   };
 
-  // Reaktion direkt aus dem Chip toggeln
-  const handleEmojiSelectDirect = async (msgId: string, emoji: string, hasReacted: boolean) => {
-    try {
-      if (hasReacted) {
-        await removeReaction(msgId, emoji);
-      } else {
-        await addReaction(msgId, emoji);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.bgSolid }]} edges={['top']}>
         <View style={styles.center}>
-          <ActivityIndicator color="#C8A96E" />
+          <ActivityIndicator color={colors.gold} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgSolid }]} edges={['top']}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: colors.dividerL }]}>
         <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}>
-          <Icon name="arrow-left" size={20} color="#5A5450" />
+          <Icon name="arrow-left" size={20} color={colors.textMuted} />
         </TouchableOpacity>
 
-        <View style={styles.headerAvatar}>
+        <View style={[styles.headerAvatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }]}>
           {getPartnerAvatar() ? (
             <Image source={{ uri: getPartnerAvatar()! }} style={styles.headerAvatarImg} />
           ) : channel?.type === 'direct' ? (
-            <Text style={styles.headerAvatarText}>
+            <Text style={[styles.headerAvatarText, { color: colors.gold }]}>
               {(getChannelName()).slice(0, 1).toUpperCase()}
             </Text>
           ) : (
-            <Icon name="users" size={16} color="#C8A96E" />
+            <Icon name="users" size={16} color={colors.gold} />
           )}
         </View>
 
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerName} numberOfLines={1}>{getChannelName()}</Text>
-          <Text style={styles.headerSub}>
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          onPress={isGroupChannel ? () => setShowGroupInfo(true) : undefined}
+          activeOpacity={isGroupChannel ? 0.7 : 1}
+        >
+          <Text style={[styles.headerName, { color: colors.textH }]} numberOfLines={1}>{getChannelName()}</Text>
+          <Text style={[styles.headerSub, { color: colors.textMuted }]}>
             {channel?.type === 'direct' ? 'Direkt' : `${channel?.members.length ?? 0} Mitglieder`}
           </Text>
-        </View>
+        </TouchableOpacity>
+
+        {isGroupChannel && (
+          <TouchableOpacity onPress={() => setShowGroupInfo(true)} style={{ padding: 4 }}>
+            <Icon name="info" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Messages */}
@@ -475,25 +637,72 @@ export default function ChatRoomScreen() {
           </View>
         )}
 
+        {/* Image Preview Banner */}
+        {imageUri && (
+          <View style={styles.imagePreviewBanner}>
+            <Image source={{ uri: imageUri }} style={styles.imagePreviewThumb} />
+            <Text style={styles.imagePreviewText} numberOfLines={1}>Bild senden</Text>
+            {uploadingImage ? (
+              <ActivityIndicator size="small" color="#C8A96E" />
+            ) : (
+              <>
+                <TouchableOpacity onPress={handleCancelImage} style={{ padding: 4 }}>
+                  <Icon name="x" size={14} color="#5A5450" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSendImage} style={styles.imagePreviewSend}>
+                  <Icon name="send" size={14} color="#1A1A1A" />
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+
         {/* Input */}
-        <View style={styles.inputRow}>
+        <View style={[styles.inputRow, { borderTopColor: colors.dividerL }]}>
+          {/* Photo Button */}
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={handlePickImage}
+            activeOpacity={0.7}
+          >
+            <Icon name="photo" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          {/* Poll Button */}
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => setShowPollForm(true)}
+            activeOpacity={0.7}
+          >
+            <Icon name="chart-bar" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          {/* Seeds Button */}
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => setShowSeedsModal(true)}
+            activeOpacity={0.7}
+          >
+            <Icon name="seedling" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
             value={text}
             onChangeText={setText}
             placeholder={editingMsg ? 'Nachricht bearbeiten ...' : 'Nachricht schreiben ...'}
-            placeholderTextColor="#5A5450"
+            placeholderTextColor={colors.textMuted}
             maxLength={5000}
             returnKeyType="send"
             onSubmitEditing={editingMsg ? handleSaveEdit : handleSend}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
+            style={[styles.sendBtn, { backgroundColor: colors.gold }, (!text.trim() || sending) && { backgroundColor: colors.goldBg }]}
             onPress={editingMsg ? handleSaveEdit : handleSend}
             disabled={!text.trim() || sending}
             activeOpacity={0.7}
           >
-            <Icon name="send" size={16} color={text.trim() && !sending ? '#1A1A1A' : '#5A5450'} />
+            <Icon name="send" size={16} color={text.trim() && !sending ? colors.textOnGold : colors.textMuted} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -516,6 +725,40 @@ export default function ChatRoomScreen() {
         onSelect={handleEmojiSelect}
         existingReactions={emojiPickerMsg ? (reactions[emojiPickerMsg.id] ?? []) : []}
       />
+
+      {/* Poll erstellen Modal */}
+      {channelId && (
+        <CreatePollModal
+          visible={showPollForm}
+          channelId={channelId}
+          onCreated={handlePollCreated}
+          onClose={() => setShowPollForm(false)}
+        />
+      )}
+
+      {/* Seeds Transfer Modal */}
+      {channel && userId && (
+        <SeedsTransferModal
+          visible={showSeedsModal}
+          channelId={channel.id}
+          channelType={channel.type}
+          members={channel.members}
+          currentUserId={userId}
+          onClose={() => setShowSeedsModal(false)}
+          onSent={handleSeedsSent}
+        />
+      )}
+
+      {/* Group Info Sheet */}
+      {channel && userId && isGroupChannel && (
+        <GroupInfoSheet
+          visible={showGroupInfo}
+          channel={channel}
+          currentUserId={userId}
+          onClose={() => setShowGroupInfo(false)}
+          onChannelUpdated={(updated) => setChannel(updated)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -571,7 +814,7 @@ function MessageActionSheet({
             </TouchableOpacity>
           )}
 
-          {/* Löschen – nur eigene Nachrichten */}
+          {/* Loeschen – nur eigene Nachrichten */}
           {isOwn && (
             <TouchableOpacity
               style={[styles.sheetAction, styles.sheetActionDanger]}
@@ -579,7 +822,7 @@ function MessageActionSheet({
               activeOpacity={0.7}
             >
               <Icon name="trash" size={18} color="#E05A5A" />
-              <Text style={[styles.sheetActionText, { color: '#E05A5A' }]}>Löschen</Text>
+              <Text style={[styles.sheetActionText, { color: '#E05A5A' }]}>Loeschen</Text>
             </TouchableOpacity>
           )}
 
@@ -590,7 +833,7 @@ function MessageActionSheet({
             activeOpacity={0.7}
           >
             <Icon name="x" size={18} color="#5A5450" />
-            <Text style={[styles.sheetActionText, { color: '#5A5450' }]}>Schließen</Text>
+            <Text style={[styles.sheetActionText, { color: '#5A5450' }]}>Schliessen</Text>
           </TouchableOpacity>
         </Pressable>
       </Pressable>
@@ -612,7 +855,7 @@ function EmojiPickerModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.sheetOverlay} onPress={onClose}>
         <Pressable style={styles.emojiPickerContent}>
-          <Text style={styles.emojiPickerTitle}>Reaktion wählen</Text>
+          <Text style={styles.emojiPickerTitle}>Reaktion waehlen</Text>
           <View style={styles.emojiGrid}>
             {QUICK_EMOJIS.map((emoji) => {
               const hasReacted = existingReactions.some((r) => r.emoji === emoji && r.has_reacted);
@@ -637,7 +880,7 @@ function EmojiPickerModal({
 // ── Styles ─────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1A1A1A' },
+  container: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   // Header
@@ -665,6 +908,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(200,169,110,0.04)', borderRadius: 10,
   },
 
+  // Seeds
+  seedsRow: { alignItems: 'center', paddingVertical: 8 },
+  seedsCard: {
+    alignItems: 'center', paddingHorizontal: 24, paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: 'rgba(200,169,110,0.08)',
+    borderWidth: 1, borderColor: 'rgba(200,169,110,0.2)',
+  },
+  seedsAmount: { fontSize: 20, fontWeight: '500', color: '#C8A96E', marginTop: 4 },
+  seedsSub: { fontSize: 10, color: '#5A5450', letterSpacing: 1, marginTop: 2 },
+
+  // Bubbles
   bubbleRow: { marginVertical: 2 },
   bubbleRowOwn: { alignItems: 'flex-end' },
   bubbleRowOther: { alignItems: 'flex-start' },
@@ -685,6 +940,11 @@ const styles = StyleSheet.create({
   bubbleMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   bubbleEdited: { fontSize: 9, color: '#5A5450' },
   bubbleTime: { fontSize: 9, color: '#5A5450' },
+
+  // Image in bubble
+  imageMsg: {
+    width: 220, height: 180, borderRadius: 10,
+  },
 
   replyPreview: {
     paddingLeft: 8, paddingVertical: 4, marginBottom: 2,
@@ -721,11 +981,32 @@ const styles = StyleSheet.create({
   },
   replyBannerText: { flex: 1, fontSize: 11, color: '#5A5450' },
 
-  // Input
-  inputRow: {
+  // Image Preview Banner
+  imagePreviewBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: 'rgba(200,169,110,0.04)',
+    borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.1)',
+  },
+  imagePreviewThumb: {
+    width: 36, height: 36, borderRadius: 6,
+  },
+  imagePreviewText: { flex: 1, fontSize: 12, color: '#5A5450' },
+  imagePreviewSend: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#C8A96E',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Input
+  inputRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 8,
     borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.06)',
+  },
+  actionBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center',
   },
   input: {
     flex: 1, paddingHorizontal: 14, paddingVertical: 10,

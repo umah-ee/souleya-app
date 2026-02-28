@@ -28,7 +28,26 @@ export type IconName =
   | 'send'
   | 'corner-up-left'
   | 'face-smile'
-  | 'trash';
+  | 'trash'
+  | 'sparkles'
+  | 'photo'
+  | 'chart-bar'
+  | 'seedling'
+  | 'pencil'
+  | 'logout'
+  | 'chevron-right'
+  | 'info'
+  | 'sun'
+  | 'moon'
+  | 'building'
+  | 'star'
+  | 'star-filled'
+  | 'bookmark'
+  | 'bookmark-filled'
+  | 'camera'
+  | 'share'
+  | 'navigation'
+  | 'tag';
 
 interface IconProps {
   name: IconName;
@@ -47,6 +66,30 @@ export function Icon({ name, size = 16, color = '#C8A96E' }: IconProps) {
           strokeWidth={1.5}
           strokeLinecap="round"
           strokeLinejoin="round"
+        />
+      </Svg>
+    );
+  }
+
+  if (name === 'star-filled') {
+    return (
+      <Svg viewBox="0 0 24 24" width={size} height={size}>
+        <Path
+          d="M8.243 7.34l-6.38 .925l-.113 .023a1 1 0 0 0 -.44 1.684l4.622 4.499l-1.09 6.355l-.013 .11a1 1 0 0 0 1.464 .944l5.706 -3l5.693 3l.1 .046a1 1 0 0 0 1.352 -1.1l-1.091 -6.355l4.624 -4.5l.078 -.085a1 1 0 0 0 -.633 -1.62l-6.38 -.926l-2.852 -5.78a1 1 0 0 0 -1.794 0l-2.853 5.78z"
+          fill={color}
+          stroke="none"
+        />
+      </Svg>
+    );
+  }
+
+  if (name === 'bookmark-filled') {
+    return (
+      <Svg viewBox="0 0 24 24" width={size} height={size}>
+        <Path
+          d="M14 2a5 5 0 0 1 5 5v14a1 1 0 0 1 -1.555 .832l-5.445 -3.63l-5.444 3.63a1 1 0 0 1 -1.556 -.831v-14a5 5 0 0 1 5 -5h4z"
+          fill={color}
+          stroke="none"
         />
       </Svg>
     );
@@ -189,6 +232,117 @@ const paths: Record<IconName, React.ReactNode> = {
       <Path d="M14 11l0 6" />
       <Path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
       <Path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+    </>
+  ),
+  sparkles: (
+    <>
+      <Path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2z" />
+      <Path d="M3 12a6 6 0 0 1 6 6a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6z" />
+      <Path d="M17 4a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2z" />
+    </>
+  ),
+  photo: (
+    <>
+      <Path d="M15 8h.01" />
+      <Rect x={3} y={3} width={18} height={18} rx={2} />
+      <Path d="M4 15l4 -4a3 5 0 0 1 3 0l5 5" />
+      <Path d="M14 14l1 -1a3 5 0 0 1 3 0l2 2" />
+    </>
+  ),
+  'chart-bar': (
+    <>
+      <Rect x={3} y={12} width={4} height={8} rx={1} />
+      <Rect x={9} y={8} width={4} height={12} rx={1} />
+      <Rect x={15} y={4} width={4} height={16} rx={1} />
+    </>
+  ),
+  seedling: (
+    <>
+      <Path d="M12 10a6 6 0 0 0 -6 -6h-3v2a6 6 0 0 0 6 6h3" />
+      <Path d="M12 14a6 6 0 0 1 6 -6h3v1a6 6 0 0 1 -6 6h-3" />
+      <Path d="M12 20v-10" />
+    </>
+  ),
+  pencil: (
+    <Path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+  ),
+  logout: (
+    <>
+      <Path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2" />
+      <Path d="M9 12h12l-3 -3" />
+      <Path d="M18 15l3 -3" />
+    </>
+  ),
+  'chevron-right': (
+    <Path d="M9 6l6 6l-6 6" />
+  ),
+  info: (
+    <>
+      <Path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+      <Path d="M12 8l.01 0" />
+      <Path d="M11 12h1v4h1" />
+    </>
+  ),
+  sun: (
+    <>
+      <Path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" />
+      <Path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7" />
+    </>
+  ),
+  moon: (
+    <>
+      <Path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </>
+  ),
+  building: (
+    <>
+      <Path d="M3 21l18 0" />
+      <Path d="M9 8l1 0" />
+      <Path d="M9 12l1 0" />
+      <Path d="M9 16l1 0" />
+      <Path d="M14 8l1 0" />
+      <Path d="M14 12l1 0" />
+      <Path d="M14 16l1 0" />
+      <Path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16" />
+    </>
+  ),
+  star: (
+    <Path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z" />
+  ),
+  // star-filled + bookmark-filled have special handling above
+  'star-filled': null,
+  bookmark: (
+    <Path d="M9 4h6a2 2 0 0 1 2 2v14l-5 -3l-5 3v-14a2 2 0 0 1 2 -2" />
+  ),
+  'bookmark-filled': null,
+  camera: (
+    <>
+      <Path d="M5 7h1a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2" />
+      <Path d="M12 13m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+    </>
+  ),
+  share: (
+    <>
+      <Path d="M6 15m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+      <Path d="M18 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+      <Path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+      <Path d="M8.7 13.7l6.6 2.6" />
+      <Path d="M15.3 7.3l-6.6 2.6" />
+    </>
+  ),
+  navigation: (
+    <>
+      <Path d="M12 18.5l-3 -1.5l-6 3v-13l6 -3l6 3l6 -3v7.5" />
+      <Path d="M9 4v13" />
+      <Path d="M15 7v5.5" />
+      <Path d="M21.121 20.121a3 3 0 1 0 -4.242 0c.418 .419 1.125 1.045 2.121 1.879c1.051 -.89 1.759 -1.516 2.121 -1.879z" />
+      <Path d="M19 18v.01" />
+    </>
+  ),
+  tag: (
+    <>
+      <Path d="M7.5 7.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+      <Path d="M3 6v5.172a2 2 0 0 0 .586 1.414l7.71 7.71a2.41 2.41 0 0 0 3.408 0l5.592 -5.592a2.41 2.41 0 0 0 0 -3.408l-7.71 -7.71a2 2 0 0 0 -1.414 -.586h-5.172a3 3 0 0 0 -3 3z" />
     </>
   ),
 };

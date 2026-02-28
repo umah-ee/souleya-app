@@ -102,3 +102,26 @@ export interface UnreadCount {
   channel_id: string;
   unread_count: number;
 }
+
+// ── Polls ─────────────────────────────────────────────────────
+
+export interface PollOption {
+  id: string;
+  label: string;
+  position: number;
+  vote_count: number;
+  percentage: number;
+  has_voted: boolean;
+}
+
+export interface PollResult {
+  poll_id: string;
+  message_id: string;
+  question: string;
+  multiple_choice: boolean;
+  is_anonymous: boolean;
+  expires_at: string | null;
+  is_expired: boolean;
+  total_votes: number;
+  options: PollOption[];
+}

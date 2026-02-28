@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth';
+import { useThemeStore } from '../../store/theme';
 import { fetchFeed } from '../../lib/pulse';
 import type { Pulse } from '../../types/pulse';
 import PulseCard from '../../components/PulseCard';
@@ -13,6 +14,7 @@ import { Icon } from '../../components/Icon';
 
 export default function HomeScreen() {
   const { session } = useAuthStore();
+  const colors = useThemeStore((s) => s.colors);
   const insets = useSafeAreaInsets();
   const [pulses, setPulses] = useState<Pulse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,18 +61,18 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.center, { paddingTop: insets.top }]}>
-        <ActivityIndicator color="#C8A96E" />
+      <View style={[styles.center, { paddingTop: insets.top, backgroundColor: colors.bgSolid }]}>
+        <ActivityIndicator color={colors.gold} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.bgSolid }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <Icon name="home" size={22} color="#C8A96E" />
-        <Text style={styles.headerTitle}>PULSE</Text>
+      <View style={[styles.header, { borderBottomColor: colors.divider }]}>
+        <Icon name="sparkles" size={22} color={colors.gold} />
+        <Text style={[styles.headerTitle, { color: colors.gold }]}>PULSE</Text>
       </View>
 
       <FlatList
@@ -81,15 +83,15 @@ export default function HomeScreen() {
         )}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#C8A96E" />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.gold} />
         }
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.3}
-        ListFooterComponent={loadingMore ? <ActivityIndicator color="#C8A96E" style={{ margin: 16 }} /> : null}
+        ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.gold} style={{ margin: 16 }} /> : null}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Der Pulse wartet</Text>
-            <Text style={styles.emptyText}>Teile als erstes deinen Impuls.</Text>
+            <Text style={[styles.emptyTitle, { color: colors.goldDeep }]}>Der Pulse wartet</Text>
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>Teile als erstes deinen Impuls.</Text>
           </View>
         }
       />
@@ -97,11 +99,11 @@ export default function HomeScreen() {
       {/* FAB – Neuer Pulse */}
       {session && (
         <TouchableOpacity
-          style={[styles.fab, { bottom: insets.bottom + 80 }]}
+          style={[styles.fab, { bottom: insets.bottom + 80, backgroundColor: colors.gold }]}
           onPress={() => setShowCreate(true)}
           activeOpacity={0.85}
         >
-          <Icon name="plus" size={24} color="#2C2A35" />
+          <Icon name="plus" size={24} color={colors.textOnGold} />
         </TouchableOpacity>
       )}
 
@@ -115,26 +117,23 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#18161F' },
-  center: { flex: 1, backgroundColor: '#18161F', alignItems: 'center', justifyContent: 'center' },
+  container: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(200,169,110,0.08)',
+    borderBottomWidth: 1,
   },
-  headerLogo: { fontSize: 22, color: '#C8A96E' },
-  headerTitle: { fontSize: 11, letterSpacing: 4, color: '#C8A96E' },
+  headerTitle: { fontSize: 11, letterSpacing: 4 },
   listContent: { padding: 16 },
   empty: { alignItems: 'center', paddingVertical: 64, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 20, fontWeight: '300', color: '#A8894E', marginBottom: 8, letterSpacing: 1 },
-  emptyText: { fontSize: 13, color: '#5A5450', textAlign: 'center' },
+  emptyTitle: { fontSize: 20, fontWeight: '400', marginBottom: 8, letterSpacing: 1 },
+  emptyText: { fontSize: 13, textAlign: 'center' },
   fab: {
     position: 'absolute', right: 20,
     width: 52, height: 52, borderRadius: 26,
-    backgroundColor: '#C8A96E',
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#C8A96E', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 12, elevation: 8,
   },
-  fabText: { fontSize: 24, color: '#2C2A35', lineHeight: 28, fontWeight: '300' },
 });
