@@ -11,6 +11,7 @@ import { searchUsers, type UserSearchResult } from '../../lib/users';
 import { sendConnectionRequest, getConnectionStatus } from '../../lib/circles';
 import { fetchNearbyUsers, fetchEvents, joinEvent, leaveEvent } from '../../lib/events';
 import { fetchNearbyPlaces, savePlace, unsavePlace, PLACE_TAGS } from '../../lib/places';
+import { fetchProfile } from '../../lib/profile';
 import type { ConnectionStatus } from '../../types/circles';
 import type { SoEvent } from '../../types/events';
 import type { Place } from '../../types/places';
@@ -72,6 +73,22 @@ export default function DiscoverScreen() {
   const [showCreatePlace, setShowCreatePlace] = useState(false);
 
   const isSearchActive = query.trim().length >= 2;
+
+  // ── Profil-Vorlieben als initiale Tags laden ───────────
+  const [tagsInitialized, setTagsInitialized] = useState(false);
+  useEffect(() => {
+    if (!userId || tagsInitialized) return;
+    fetchProfile()
+      .then((profile) => {
+        const interests = profile.interests ?? [];
+        const matching = interests.filter((i: string) => PLACE_TAGS.includes(i));
+        if (matching.length > 0) {
+          setActiveTags(matching);
+        }
+        setTagsInitialized(true);
+      })
+      .catch(() => setTagsInitialized(true));
+  }, [userId, tagsInitialized]);
 
   // ── Daten laden ────────────────────────────────────────
   const loadDiscoverData = useCallback(async () => {
@@ -445,7 +462,7 @@ export default function DiscoverScreen() {
             {PLACE_TAGS.slice(0, 15).map((tag) => (
               <TouchableOpacity
                 key={tag}
-                style={[styles.tagFilterBtn, { borderColor: colors.glassBorder, backgroundColor: colors.glass }, activeTags.includes(tag) && { backgroundColor: colors.gold, borderColor: colors.gold }]}
+                style={[styles.tagFilterBtn, { borderWidth: 0, backgroundColor: colors.glass }, activeTags.includes(tag) && { backgroundColor: colors.gold, borderWidth: 1, borderColor: colors.gold }]}
                 onPress={() => toggleTag(tag)}
                 activeOpacity={0.7}
               >
