@@ -23,6 +23,7 @@ export interface SoEvent {
     is_first_light: boolean;
   };
   has_joined?: boolean;
+  is_bookmarked?: boolean;
 }
 
 export interface CreateEventData {

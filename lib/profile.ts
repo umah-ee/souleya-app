@@ -42,3 +42,32 @@ export async function uploadAvatar(file: {
   // Cache-Busting: Timestamp anhaengen damit neues Bild geladen wird
   return `${data.publicUrl}?t=${Date.now()}`;
 }
+
+export async function uploadBanner(file: {
+  uri: string;
+  name: string;
+  type: string;
+}): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Nicht angemeldet');
+
+  const ext = file.name.split('.').pop() ?? 'jpg';
+  const path = `${user.id}/banner.${ext}`;
+
+  // Datei als Blob lesen
+  const response = await fetch(file.uri);
+  const blob = await response.blob();
+
+  const { error } = await supabase.storage
+    .from('banners')
+    .upload(path, blob, {
+      upsert: true,
+      contentType: file.type,
+    });
+
+  if (error) throw new Error(`Upload fehlgeschlagen: ${error.message}`);
+
+  const { data } = supabase.storage.from('banners').getPublicUrl(path);
+
+  return `${data.publicUrl}?t=${Date.now()}`;
+}

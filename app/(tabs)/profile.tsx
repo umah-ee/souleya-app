@@ -2,18 +2,31 @@ import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Alert, TextInput, ActivityIndicator, Image, Platform,
+  Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useAuthStore } from '../../store/auth';
 import { useThemeStore } from '../../store/theme';
 import { supabase } from '../../lib/supabase';
-import { fetchProfile, updateProfile, uploadAvatar } from '../../lib/profile';
+import { fetchProfile, updateProfile, uploadAvatar, uploadBanner } from '../../lib/profile';
 import { geocodeLocation } from '../../lib/events';
 import { router } from 'expo-router';
 import type { Profile } from '../../types/profile';
 import { SOUL_LEVEL_NAMES } from '../../types/profile';
 import { Icon } from '../../components/Icon';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+// 20 vordefinierte Interessen (identisch mit Web)
+const INTEREST_SUGGESTIONS = [
+  'Achtsamkeit', 'Yoga', 'Meditation', 'Breathwork', 'Kakao-Zeremonie',
+  'Sound Healing', 'Naturverbindung', 'Tantra', 'Ayurveda', 'Schamanismus',
+  'Astrologie', 'Tarot', 'Reiki', 'Qigong', 'Pilates',
+  'Ernaehrung', 'Journaling', 'Kreativitaet', 'Tanz', 'Philosophie',
+];
+
+const MAX_INTERESTS = 10;
 
 export default function ProfileScreen() {
   const { session } = useAuthStore();
@@ -23,9 +36,11 @@ export default function ProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [tagInput, setTagInput] = useState('');
 
   // Edit Form
   const [form, setForm] = useState({
@@ -35,6 +50,7 @@ export default function ProfileScreen() {
     location: '',
     location_lat: null as number | null,
     location_lng: null as number | null,
+    interests: [] as string[],
   });
 
   useEffect(() => {
@@ -48,6 +64,7 @@ export default function ProfileScreen() {
           location: p.location ?? '',
           location_lat: p.location_lat,
           location_lng: p.location_lng,
+          interests: p.interests ?? [],
         });
       })
       .catch(console.error)
@@ -63,15 +80,18 @@ export default function ProfileScreen() {
       location: profile.location ?? '',
       location_lat: profile.location_lat,
       location_lng: profile.location_lng,
+      interests: profile.interests ?? [],
     });
     setEditing(true);
     setError('');
     setSuccess('');
+    setTagInput('');
   };
 
   const handleCancel = () => {
     setEditing(false);
     setError('');
+    setTagInput('');
   };
 
   // GPS-Standort erkennen
@@ -123,6 +143,7 @@ export default function ProfileScreen() {
         location: form.location || undefined,
         location_lat: form.location_lat ?? undefined,
         location_lng: form.location_lng ?? undefined,
+        interests: form.interests,
       });
       setProfile(updated);
       setEditing(false);
@@ -173,6 +194,61 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleBannerPick = async () => {
+    if (!editing || !profile) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    if (asset.fileSize && asset.fileSize > 10 * 1024 * 1024) {
+      setError('Banner darf maximal 10 MB gross sein');
+      return;
+    }
+
+    setUploadingBanner(true);
+    setError('');
+    try {
+      const ext = asset.uri.split('.').pop() ?? 'jpg';
+      const bannerUrl = await uploadBanner({
+        uri: asset.uri,
+        name: `banner.${ext}`,
+        type: asset.mimeType ?? `image/${ext}`,
+      });
+      const updated = await updateProfile({ banner_url: bannerUrl });
+      setProfile(updated);
+      setSuccess('Banner aktualisiert');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload fehlgeschlagen');
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  // ── Interest-Tags ────────────────────────────────────
+  const addInterest = (tag: string) => {
+    const trimmed = tag.trim();
+    if (!trimmed || form.interests.length >= MAX_INTERESTS) return;
+    if (form.interests.includes(trimmed)) return;
+    setForm((f) => ({ ...f, interests: [...f.interests, trimmed] }));
+    setTagInput('');
+  };
+
+  const removeInterest = (tag: string) => {
+    setForm((f) => ({ ...f, interests: f.interests.filter((t) => t !== tag) }));
+  };
+
+  const unusedSuggestions = INTEREST_SUGGESTIONS.filter(
+    (s) => !form.interests.includes(s),
+  ).slice(0, 8);
+
   const handleLogout = () => {
     Alert.alert('Abmelden', 'Moechtest du dich wirklich abmelden?', [
       { text: 'Abbrechen', style: 'cancel' },
@@ -207,6 +283,36 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.bgSolid }]} contentContainerStyle={styles.content}>
+      {/* Banner */}
+      <TouchableOpacity
+        onPress={handleBannerPick}
+        disabled={!editing}
+        activeOpacity={editing ? 0.7 : 1}
+        style={styles.bannerContainer}
+      >
+        {profile.banner_url ? (
+          <Image source={{ uri: profile.banner_url }} style={styles.bannerImg} />
+        ) : (
+          <View style={[styles.bannerFallback, { backgroundColor: colors.goldBg }]}>
+            <View style={[styles.bannerGradientOverlay, { backgroundColor: colors.bgSolid }]} />
+          </View>
+        )}
+        {/* Gradient-Overlay */}
+        <View style={[styles.bannerGradient, { backgroundColor: colors.bgSolid }]} />
+        {editing && (
+          <View style={[styles.bannerEditOverlay, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
+            {uploadingBanner ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Icon name="camera" size={20} color="#fff" />
+                <Text style={styles.bannerEditText}>Banner aendern</Text>
+              </>
+            )}
+          </View>
+        )}
+      </TouchableOpacity>
+
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.goldDeep }]}>PROFIL</Text>
@@ -299,6 +405,17 @@ export default function ProfileScreen() {
                   <Text style={[styles.firstLightBadgeText, { color: colors.gold }]}>FIRST LIGHT</Text>
                 </View>
               )}
+              {profile.is_admin && (
+                <View style={[styles.adminBadge, { borderColor: colors.goldBorder, backgroundColor: colors.goldBg }]}>
+                  <Icon name="shield" size={10} color={colors.gold} />
+                  <Text style={[styles.adminBadgeText, { color: colors.gold }]}>ADMIN</Text>
+                </View>
+              )}
+              {profile.is_mentor && (
+                <View style={[styles.mentorBadge, { borderColor: '#4CAF5044', backgroundColor: '#4CAF5014' }]}>
+                  <Text style={[styles.mentorBadgeText, { color: '#4CAF50' }]}>MENTOR</Text>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -357,6 +474,79 @@ export default function ProfileScreen() {
         </>
       )}
 
+      {/* Interest-Tags */}
+      {editing ? (
+        <View style={styles.interestSection}>
+          <Text style={[styles.interestLabel, { color: colors.textMuted }]}>
+            INTERESSEN ({form.interests.length}/{MAX_INTERESTS})
+          </Text>
+
+          {/* Tag Input */}
+          <View style={[styles.inputWithIcon, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
+            <Icon name="tag" size={14} color={colors.gold} />
+            <TextInput
+              style={[styles.inputInner, { color: colors.textH }]}
+              value={tagInput}
+              onChangeText={setTagInput}
+              placeholder="Interesse eingeben ..."
+              placeholderTextColor={colors.textMuted}
+              maxLength={30}
+              onSubmitEditing={() => addInterest(tagInput)}
+              returnKeyType="done"
+            />
+            {tagInput.trim().length > 0 && form.interests.length < MAX_INTERESTS && (
+              <TouchableOpacity onPress={() => addInterest(tagInput)} activeOpacity={0.7} style={{ padding: 4 }}>
+                <Icon name="plus" size={16} color={colors.gold} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Vorschlaege */}
+          {unusedSuggestions.length > 0 && form.interests.length < MAX_INTERESTS && (
+            <View style={styles.suggestionsRow}>
+              {unusedSuggestions.map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.suggestionChip, { borderColor: colors.goldBorderS }]}
+                  onPress={() => addInterest(s)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.suggestionText, { color: colors.textSec }]}>{s}</Text>
+                  <Icon name="plus" size={10} color={colors.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Aktive Tags */}
+          {form.interests.length > 0 && (
+            <View style={styles.activeTags}>
+              {form.interests.map((tag) => (
+                <View key={tag} style={[styles.activeTag, { borderColor: colors.goldBorder, backgroundColor: colors.goldBg }]}>
+                  <Text style={[styles.activeTagText, { color: colors.goldDeep }]}>{tag}</Text>
+                  <TouchableOpacity onPress={() => removeInterest(tag)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                    <Icon name="x" size={10} color={colors.goldDeep} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      ) : (
+        /* View-Mode: Interest-Tags anzeigen */
+        profile.interests && profile.interests.length > 0 ? (
+          <View style={styles.interestViewSection}>
+            <View style={styles.activeTags}>
+              {profile.interests.map((tag) => (
+                <View key={tag} style={[styles.activeTag, { borderColor: colors.goldBorder, backgroundColor: colors.goldBg }]}>
+                  <Text style={[styles.activeTagText, { color: colors.goldDeep }]}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null
+      )}
+
       {/* Edit Actions */}
       {editing && (
         <View style={styles.editActions}>
@@ -378,11 +568,31 @@ export default function ProfileScreen() {
         </View>
       )}
 
+      {/* Coach Studio Link (nur fuer Mentoren) */}
+      {profile.is_mentor && !editing && (
+        <TouchableOpacity
+          style={[styles.studioBtn, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}
+          onPress={() => router.push('/studio' as any)}
+          activeOpacity={0.7}
+        >
+          <Icon name="layout-dashboard" size={18} color={colors.gold} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.studioBtnTitle, { color: colors.textH }]}>Coach Studio</Text>
+            <Text style={[styles.studioBtnDesc, { color: colors.textMuted }]}>Kurse, Kalender und Buchungen verwalten</Text>
+          </View>
+          <Icon name="chevron-right" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+      )}
+
       {/* Stats */}
       <View style={[styles.statsCard, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
         <View style={[styles.statRow, { borderBottomColor: colors.dividerL }]}>
           <Text style={[styles.statLabel, { color: colors.textMuted }]}>SEEDS</Text>
           <Text style={[styles.statValueGold, { color: colors.gold }]}>{profile.seeds_balance}</Text>
+        </View>
+        <View style={[styles.statRow, { borderBottomColor: colors.dividerL }]}>
+          <Text style={[styles.statLabel, { color: colors.textMuted }]}>BEITRAEGE</Text>
+          <Text style={[styles.statValue, { color: colors.textSec }]}>{profile.pulses_count ?? 0}</Text>
         </View>
         <View style={[styles.statRow, { borderBottomColor: colors.dividerL }]}>
           <Text style={[styles.statLabel, { color: colors.textMuted }]}>VERBINDUNGEN</Text>
@@ -418,28 +628,41 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 24, paddingTop: 64 },
+  content: { paddingBottom: 24 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   errorText: { fontSize: 13 },
+
+  // Banner
+  bannerContainer: { width: SCREEN_WIDTH, height: 140, overflow: 'hidden' },
+  bannerImg: { width: '100%', height: '100%', resizeMode: 'cover' },
+  bannerFallback: { width: '100%', height: '100%' },
+  bannerGradientOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 60, opacity: 0.7 },
+  bannerGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, opacity: 0.8 },
+  bannerEditOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  bannerEditText: { fontSize: 11, color: '#fff', letterSpacing: 1 },
+
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 24, paddingHorizontal: 24, paddingTop: 16,
   },
   headerTitle: { fontSize: 10, letterSpacing: 4 },
   editBtnText: { fontSize: 9, letterSpacing: 2 },
 
   successBanner: {
     paddingVertical: 8, paddingHorizontal: 16, borderRadius: 12,
-    borderWidth: 1, marginBottom: 16,
+    borderWidth: 1, marginBottom: 16, marginHorizontal: 24,
   },
   successText: { fontSize: 13, textAlign: 'center' },
   errorBanner: {
     paddingVertical: 8, paddingHorizontal: 16, borderRadius: 12,
-    borderWidth: 1, marginBottom: 16,
+    borderWidth: 1, marginBottom: 16, marginHorizontal: 24,
   },
   errorBannerText: { fontSize: 13, textAlign: 'center' },
 
-  profileTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 16, marginBottom: 20 },
+  profileTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 16, marginBottom: 20, paddingHorizontal: 24 },
   avatar: {
     width: 80, height: 80, borderRadius: 40,
     borderWidth: 2,
@@ -472,6 +695,17 @@ const styles = StyleSheet.create({
     borderRadius: 999, borderWidth: 1,
   },
   firstLightBadgeText: { fontSize: 8, letterSpacing: 2 },
+  adminBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: 3, paddingHorizontal: 10,
+    borderRadius: 999, borderWidth: 1,
+  },
+  adminBadgeText: { fontSize: 8, letterSpacing: 2 },
+  mentorBadge: {
+    paddingVertical: 3, paddingHorizontal: 10,
+    borderRadius: 999, borderWidth: 1,
+  },
+  mentorBadgeText: { fontSize: 8, letterSpacing: 2 },
 
   editFields: { flex: 1, gap: 10 },
   input: {
@@ -490,16 +724,44 @@ const styles = StyleSheet.create({
   },
   atSign: { fontSize: 14 },
 
-  editBioSection: { gap: 10, marginBottom: 16 },
+  editBioSection: { gap: 10, marginBottom: 16, paddingHorizontal: 24 },
   bioInput: { minHeight: 80, textAlignVertical: 'top' },
 
   bio: {
     fontSize: 14, lineHeight: 22,
-    fontWeight: '400', marginBottom: 8,
+    fontWeight: '400', marginBottom: 8, paddingHorizontal: 24,
   },
-  location: { fontSize: 13, marginBottom: 16 },
+  location: { fontSize: 13, marginBottom: 16, paddingHorizontal: 24 },
 
-  editActions: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  // Interest-Tags
+  interestSection: { paddingHorizontal: 24, marginBottom: 16, gap: 10 },
+  interestLabel: { fontSize: 9, letterSpacing: 3 },
+  suggestionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  suggestionChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 999, borderWidth: 1,
+  },
+  suggestionText: { fontSize: 11 },
+  activeTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  activeTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 999, borderWidth: 1,
+  },
+  activeTagText: { fontSize: 11 },
+  interestViewSection: { paddingHorizontal: 24, marginBottom: 16 },
+
+  // Coach Studio
+  studioBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    borderRadius: 16, padding: 16, borderWidth: 1,
+    marginBottom: 12, marginHorizontal: 24,
+  },
+  studioBtnTitle: { fontSize: 14, fontWeight: '500' },
+  studioBtnDesc: { fontSize: 11, marginTop: 2 },
+
+  editActions: { flexDirection: 'row', gap: 12, marginBottom: 20, paddingHorizontal: 24 },
   saveBtn: {
     flex: 1, paddingVertical: 12, borderRadius: 999,
     alignItems: 'center',
@@ -513,7 +775,7 @@ const styles = StyleSheet.create({
 
   statsCard: {
     borderRadius: 16, padding: 20,
-    borderWidth: 1, marginBottom: 12,
+    borderWidth: 1, marginBottom: 12, marginHorizontal: 24,
   },
   statRow: {
     flexDirection: 'row', justifyContent: 'space-between',
@@ -526,7 +788,7 @@ const styles = StyleSheet.create({
 
   referralCard: {
     borderRadius: 16, padding: 20,
-    borderWidth: 1, marginBottom: 24,
+    borderWidth: 1, marginBottom: 24, marginHorizontal: 24,
   },
   referralLabel: { fontSize: 9, letterSpacing: 3, marginBottom: 8 },
   referralRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },

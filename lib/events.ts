@@ -9,6 +9,7 @@ export async function fetchEvents(options?: {
   category?: string;
   page?: number;
   limit?: number;
+  userId?: string;
 }) {
   const params = new URLSearchParams();
   if (options?.lat != null) params.set('lat', String(options.lat));
@@ -17,6 +18,7 @@ export async function fetchEvents(options?: {
   if (options?.category) params.set('category', options.category);
   if (options?.page) params.set('page', String(options.page));
   if (options?.limit) params.set('limit', String(options.limit));
+  if (options?.userId) params.set('userId', options.userId);
 
   const qs = params.toString();
   return apiFetch<{ data: SoEvent[]; total: number; hasMore: boolean }>(
@@ -44,6 +46,29 @@ export async function joinEvent(eventId: string) {
 export async function leaveEvent(eventId: string) {
   return apiFetch<{ joined: boolean; participants_count: number }>(
     `/events/${eventId}/leave`,
+    { method: 'DELETE' },
+  );
+}
+
+// ── Eigene Events + Bookmarks laden ─────────────────────────
+export async function fetchMyEvents(page = 1, limit = 20) {
+  return apiFetch<{ data: SoEvent[]; total: number; hasMore: boolean }>(
+    `/events/my?page=${page}&limit=${limit}`,
+  );
+}
+
+// ── Event bookmarken ────────────────────────────────────────
+export async function bookmarkEvent(eventId: string) {
+  return apiFetch<{ bookmarked: boolean }>(
+    `/events/${eventId}/bookmark`,
+    { method: 'POST' },
+  );
+}
+
+// ── Event-Bookmark entfernen ────────────────────────────────
+export async function unbookmarkEvent(eventId: string) {
+  return apiFetch<{ bookmarked: boolean }>(
+    `/events/${eventId}/bookmark`,
     { method: 'DELETE' },
   );
 }

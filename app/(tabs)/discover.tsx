@@ -9,7 +9,7 @@ import { useAuthStore } from '../../store/auth';
 import { useThemeStore } from '../../store/theme';
 import { searchUsers, type UserSearchResult } from '../../lib/users';
 import { sendConnectionRequest, getConnectionStatus } from '../../lib/circles';
-import { fetchNearbyUsers, fetchEvents, joinEvent, leaveEvent } from '../../lib/events';
+import { fetchNearbyUsers, fetchEvents, joinEvent, leaveEvent, bookmarkEvent, unbookmarkEvent } from '../../lib/events';
 import { fetchNearbyPlaces, savePlace, unsavePlace, PLACE_TAGS } from '../../lib/places';
 import { fetchProfile } from '../../lib/profile';
 import type { ConnectionStatus } from '../../types/circles';
@@ -17,6 +17,7 @@ import type { SoEvent } from '../../types/events';
 import type { Place } from '../../types/places';
 import { Icon } from '../../components/Icon';
 import CreatePlaceModal from '../../components/discover/CreatePlaceModal';
+import CreateEventModal from '../../components/CreateEventModal';
 
 type Segment = 'alle' | 'mitglieder' | 'events' | 'orte';
 
@@ -70,7 +71,9 @@ export default function DiscoverScreen() {
   const [loadingPlaces, setLoadingPlaces] = useState(true);
   const [joiningEvent, setJoiningEvent] = useState<Record<string, boolean>>({});
   const [savingPlace, setSavingPlace] = useState<Record<string, boolean>>({});
+  const [bookmarkingEvent, setBookmarkingEvent] = useState<Record<string, boolean>>({});
   const [showCreatePlace, setShowCreatePlace] = useState(false);
+  const [showCreateEvent, setShowCreateEvent] = useState(false);
 
   const isSearchActive = query.trim().length >= 2;
 
@@ -211,6 +214,35 @@ export default function DiscoverScreen() {
     finally { setSavingPlace((s) => ({ ...s, [placeId]: false })); }
   };
 
+  // ── Event bookmarken ──────────────────────────────────
+  const handleBookmarkEvent = async (eventId: string) => {
+    setBookmarkingEvent((s) => ({ ...s, [eventId]: true }));
+    // Optimistisch aktualisieren
+    setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, is_bookmarked: true } : e));
+    try {
+      await bookmarkEvent(eventId);
+    } catch (err) {
+      // Rollback bei Fehler
+      setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, is_bookmarked: false } : e));
+      console.error(err);
+    } finally {
+      setBookmarkingEvent((s) => ({ ...s, [eventId]: false }));
+    }
+  };
+
+  const handleUnbookmarkEvent = async (eventId: string) => {
+    setBookmarkingEvent((s) => ({ ...s, [eventId]: true }));
+    setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, is_bookmarked: false } : e));
+    try {
+      await unbookmarkEvent(eventId);
+    } catch (err) {
+      setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, is_bookmarked: true } : e));
+      console.error(err);
+    } finally {
+      setBookmarkingEvent((s) => ({ ...s, [eventId]: false }));
+    }
+  };
+
   // ── Helpers ────────────────────────────────────────────
   const getStatusLabel = (status: ConnectionStatus) => {
     switch (status) {
@@ -318,13 +350,30 @@ export default function DiscoverScreen() {
     const isCreator = userId === item.creator_id;
     const isFull = item.max_participants != null && item.participants_count >= item.max_participants;
     const isJoining = joiningEvent[item.id];
+    const isBookmarking = bookmarkingEvent[item.id];
     return (
       <View style={[styles.eventCard, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
         <View style={styles.eventHeader}>
           <View style={[styles.categoryBadge, { borderColor: colors.goldBorder, backgroundColor: colors.goldBg }]}>
             <Text style={[styles.categoryText, { color: colors.goldDeep }]}>{item.category === 'course' ? 'KURS' : 'MEETUP'}</Text>
           </View>
-          <Text style={[styles.eventDate, { color: colors.textMuted }]}>{formatEventDate(item.starts_at)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={[styles.eventDate, { color: colors.textMuted }]}>{formatEventDate(item.starts_at)}</Text>
+            {userId && (
+              <TouchableOpacity
+                onPress={() => item.is_bookmarked ? handleUnbookmarkEvent(item.id) : handleBookmarkEvent(item.id)}
+                disabled={isBookmarking}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Icon
+                  name={item.is_bookmarked ? 'bookmark-filled' : 'bookmark'}
+                  size={18}
+                  color={item.is_bookmarked ? colors.gold : colors.textMuted}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
         <Text style={[styles.eventTitle, { color: colors.textH }]}>{item.title}</Text>
         {item.description && <Text style={[styles.eventDesc, { color: colors.textSec }]} numberOfLines={2}>{item.description}</Text>}
@@ -519,14 +568,14 @@ export default function DiscoverScreen() {
         </View>
       )}
 
-      {/* FAB – Place erstellen (nur bei Orte-Segment) */}
-      {userId && segment === 'orte' && !isSearchActive && (
+      {/* FAB – Event oder Place erstellen */}
+      {userId && (segment === 'orte' || segment === 'events') && !isSearchActive && (
         <TouchableOpacity
           style={styles.fab}
-          onPress={() => setShowCreatePlace(true)}
+          onPress={() => segment === 'orte' ? setShowCreatePlace(true) : setShowCreateEvent(true)}
           activeOpacity={0.8}
         >
-          <Icon name="map-pin" size={22} color="#fff" />
+          <Icon name={segment === 'orte' ? 'map-pin' : 'plus'} size={22} color="#fff" />
         </TouchableOpacity>
       )}
 
@@ -536,6 +585,16 @@ export default function DiscoverScreen() {
         onClose={() => setShowCreatePlace(false)}
         onCreated={() => {
           setShowCreatePlace(false);
+          loadDiscoverData();
+        }}
+      />
+
+      {/* CreateEventModal */}
+      <CreateEventModal
+        visible={showCreateEvent}
+        onClose={() => setShowCreateEvent(false)}
+        onCreated={() => {
+          setShowCreateEvent(false);
           loadDiscoverData();
         }}
       />
