@@ -54,7 +54,11 @@ export type IconName =
   | 'trophy'
   | 'book'
   | 'run'
-  | 'droplet';
+  | 'droplet'
+  | 'layout-dashboard'
+  | 'wallet'
+  | 'calendar-event'
+  | 'shield';
 
 interface IconProps {
   name: IconName;
@@ -397,5 +401,34 @@ const paths: Record<IconName, React.ReactNode> = {
   ),
   droplet: (
     <Path d="M6.8 11a6 6 0 1 0 10.396 0l-5.197 -8l-5.2 8z" />
+  ),
+  'layout-dashboard': (
+    <>
+      <Path d="M4 4h6v8h-6z" />
+      <Path d="M4 16h6v4h-6z" />
+      <Path d="M14 12h6v8h-6z" />
+      <Path d="M14 4h6v4h-6z" />
+    </>
+  ),
+  wallet: (
+    <>
+      <Path d="M17 8v-3a1 1 0 0 0 -1 -1h-10a2 2 0 0 0 0 4h12a1 1 0 0 1 1 1v3m0 4v3a1 1 0 0 1 -1 1h-12a2 2 0 0 1 -2 -2v-12" />
+      <Path d="M20 12v4h-4a2 2 0 0 1 0 -4h4" />
+    </>
+  ),
+  'calendar-event': (
+    <>
+      <Path d="M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z" />
+      <Path d="M16 3l0 4" />
+      <Path d="M8 3l0 4" />
+      <Path d="M4 11l16 0" />
+      <Path d="M8 15h2v2h-2z" />
+    </>
+  ),
+  shield: (
+    <>
+      <Path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3" />
+      <Path d="M9 12l2 2l4 -4" />
+    </>
   ),
 };

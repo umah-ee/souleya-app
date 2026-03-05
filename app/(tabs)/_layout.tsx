@@ -1,17 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, Pressable, StyleSheet } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
 import { Icon, type IconName } from '../../components/Icon';
 import { useChatStore } from '../../store/chat';
 import { useThemeStore } from '../../store/theme';
+import { fetchProfile } from '../../lib/profile';
 
 function TabBarIcon({ name, color }: { name: IconName; color: string }) {
   return <Icon name={name} size={20} color={color} />;
 }
 
-const MEHR_ITEMS: { route: string; icon: IconName; label: string }[] = [
+const BASE_mehrItems: { route: string; icon: IconName; label: string; mentorOnly?: boolean }[] = [
   { route: '/profile', icon: 'user', label: 'Profil' },
-  { route: '/studio', icon: 'compass', label: 'Studio' },
+  { route: '/studio', icon: 'layout-dashboard', label: 'Studio', mentorOnly: true },
   { route: '/analytics', icon: 'chart-bar', label: 'Analytics' },
 ];
 
@@ -21,7 +22,19 @@ export default function TabsLayout() {
   const mode = useThemeStore((s) => s.mode);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const [showMehr, setShowMehr] = useState(false);
+  const [isMentor, setIsMentor] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    fetchProfile().then((p) => {
+      if ((p as { is_mentor?: boolean }).is_mentor) setIsMentor(true);
+    }).catch(() => {});
+  }, []);
+
+  const mehrItems = useMemo(
+    () => BASE_mehrItems.filter((item) => !item.mentorOnly || isMentor),
+    [isMentor],
+  );
 
   const handleMehrItem = (route: string) => {
     setShowMehr(false);
@@ -115,12 +128,12 @@ export default function TabsLayout() {
             {/* Gold-Leiste */}
             <View style={[styles.goldLine, { backgroundColor: colors.goldBorder }]} />
 
-            {MEHR_ITEMS.map((item, i) => (
+            {mehrItems.map((item, i) => (
               <TouchableOpacity
                 key={item.route}
                 style={[
                   styles.menuItem,
-                  i < MEHR_ITEMS.length && styles.menuItemBorder,
+                  i < mehrItems.length && styles.menuItemBorder,
                   { borderBottomColor: colors.dividerL },
                 ]}
                 onPress={() => handleMehrItem(item.route)}

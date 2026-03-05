@@ -51,6 +51,7 @@ function RootLayoutNav() {
       <Stack.Screen name="chat/[channelId]" options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="places/[id]" options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="challenges/[id]" options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="studio" options={{ headerShown: false, animation: 'slide_from_right' }} />
     </Stack>
   );
 }

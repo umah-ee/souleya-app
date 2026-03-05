@@ -11,6 +11,8 @@ export interface Profile {
   location_lng: number | null;
   soul_level: number;
   is_first_light: boolean;
+  is_admin: boolean;
+  is_mentor: boolean;
   seeds_balance: number;
   connections_count: number;
   pulses_count: number;
