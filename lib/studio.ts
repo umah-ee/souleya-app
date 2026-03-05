@@ -1,8 +1,10 @@
 import { apiFetch } from './api';
 import type {
-  Course, Enrollment, F2FPricing, F2FSlot, F2FBooking,
+  Course, CourseModule, CourseLesson, Enrollment,
+  F2FPricing, F2FSlot, F2FBooking,
   Review, Announcement, StudioDashboardKPIs,
   CreateAnnouncementData, UpdateCourseData,
+  CreateCourseData, CreateModuleData, CreateLessonData,
 } from '../types/studio';
 
 // ── Dashboard ──────────────────────────────────────────────
@@ -28,8 +30,50 @@ export async function fetchCourses(options?: { status?: string; page?: number; l
   );
 }
 
+export async function fetchCourse(id: string): Promise<Course> {
+  return apiFetch(`/studio/courses/${id}`);
+}
+
+export async function createCourse(data: CreateCourseData): Promise<Course> {
+  return apiFetch('/studio/courses', { method: 'POST', body: JSON.stringify(data) });
+}
+
 export async function updateCourse(id: string, data: UpdateCourseData): Promise<Course> {
   return apiFetch(`/studio/courses/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function deleteCourse(id: string): Promise<void> {
+  await apiFetch(`/studio/courses/${id}`, { method: 'DELETE' });
+}
+
+// ── Module ──────────────────────────────────────────────────
+export async function fetchModules(courseId: string): Promise<CourseModule[]> {
+  return apiFetch(`/studio/courses/${courseId}/modules`);
+}
+
+export async function createModule(courseId: string, data: CreateModuleData): Promise<CourseModule> {
+  return apiFetch(`/studio/courses/${courseId}/modules`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateModule(moduleId: string, data: Partial<CreateModuleData>): Promise<CourseModule> {
+  return apiFetch(`/studio/courses/modules/${moduleId}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function deleteModule(moduleId: string): Promise<void> {
+  await apiFetch(`/studio/courses/modules/${moduleId}`, { method: 'DELETE' });
+}
+
+// ── Lektionen ───────────────────────────────────────────────
+export async function createLesson(moduleId: string, data: CreateLessonData): Promise<CourseLesson> {
+  return apiFetch(`/studio/courses/modules/${moduleId}/lessons`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateLesson(lessonId: string, data: Partial<CreateLessonData>): Promise<CourseLesson> {
+  return apiFetch(`/studio/courses/lessons/${lessonId}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function deleteLesson(lessonId: string): Promise<void> {
+  await apiFetch(`/studio/courses/lessons/${lessonId}`, { method: 'DELETE' });
 }
 
 // ── Enrollments ────────────────────────────────────────────

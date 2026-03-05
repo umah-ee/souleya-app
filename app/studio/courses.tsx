@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, RefreshControl, Image,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useThemeStore } from '../../store/theme';
 import { Icon } from '../../components/Icon';
 import { fetchCourses, updateCourse } from '../../lib/studio';
@@ -24,6 +25,7 @@ const STATUS_COLORS: Record<CourseStatus, { bg: string; text: string }> = {
 
 export default function CoursesScreen() {
   const colors = useThemeStore((s) => s.colors);
+  const router = useRouter();
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -62,7 +64,11 @@ export default function CoursesScreen() {
   const renderCourse = ({ item }: { item: Course }) => {
     const statusStyle = STATUS_COLORS[item.status] ?? STATUS_COLORS.draft;
     return (
-      <View style={[styles.courseCard, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
+      <TouchableOpacity
+        style={[styles.courseCard, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}
+        onPress={() => router.push({ pathname: '/studio/course-detail' as never, params: { id: item.id } } as never)}
+        activeOpacity={0.7}
+      >
         {item.cover_url && (
           <Image source={{ uri: item.cover_url }} style={styles.courseCover} />
         )}
@@ -100,7 +106,7 @@ export default function CoursesScreen() {
 
           <TouchableOpacity
             style={[styles.toggleBtn, { borderColor: colors.goldBorderS }]}
-            onPress={() => toggleStatus(item)}
+            onPress={(e) => { e.stopPropagation(); toggleStatus(item); }}
             activeOpacity={0.7}
           >
             <Text style={[styles.toggleText, { color: colors.goldText }]}>
@@ -108,7 +114,7 @@ export default function CoursesScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
