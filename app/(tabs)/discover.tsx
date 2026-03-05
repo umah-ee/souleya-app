@@ -18,6 +18,7 @@ import type { Place } from '../../types/places';
 import { Icon } from '../../components/Icon';
 import CreatePlaceModal from '../../components/discover/CreatePlaceModal';
 import CreateEventModal from '../../components/CreateEventModal';
+import DiscoverMapView from '../../components/discover/DiscoverMapView';
 
 type Segment = 'alle' | 'mitglieder' | 'events' | 'orte';
 
@@ -457,12 +458,34 @@ export default function DiscoverScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.bgGradientStart }]}>
-      {/* Fullscreen Karten-Platzhalter */}
+      {/* Fullscreen Karte */}
       <View style={StyleSheet.absoluteFill}>
-        <View style={[styles.mapFull, { backgroundColor: colors.bgGradientEnd }]}>
-          <Icon name="map" size={48} color={colors.textMuted} />
-          <Text style={[styles.mapPlaceholderText, { color: colors.textMuted }]}>Karte verfuegbar im Development Build</Text>
-        </View>
+        <DiscoverMapView
+          users={nearbyUsers.map((u) => ({
+            id: u.id,
+            display_name: u.display_name,
+            username: u.username,
+            avatar_url: u.avatar_url,
+            location_lat: u.location_lat,
+            location_lng: u.location_lng,
+            is_first_light: u.is_first_light,
+          }))}
+          events={events.filter((e) => e.location_lat && e.location_lng)}
+          places={places.filter((p) => p.location_lat && p.location_lng)}
+          center={[DEFAULT_LNG, DEFAULT_LAT]}
+          onRegionChange={(c) => {
+            // Spaeter: Daten fuer neue Region laden
+          }}
+          onUserPress={(user) => {
+            // Spaeter: ProfileModal oeffnen
+          }}
+          onEventPress={(event) => {
+            // Spaeter: Event-Detail oeffnen
+          }}
+          onPlacePress={(place) => {
+            router.push(`/places/${place.id}` as any);
+          }}
+        />
       </View>
 
       {/* Floating Header */}

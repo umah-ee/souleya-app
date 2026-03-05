@@ -33,6 +33,10 @@ export default function StudioLayout() {
       <Stack.Screen name="index" options={{ title: 'Studio' }} />
       <Stack.Screen name="courses" options={{ title: 'Kurse' }} />
       <Stack.Screen name="course-detail" options={{ title: 'Kurs-Details' }} />
+      <Stack.Screen name="content" options={{ title: 'Mediathek' }} />
+      <Stack.Screen name="participants" options={{ title: 'Teilnehmer' }} />
+      <Stack.Screen name="finance" options={{ title: 'Finanzen' }} />
+      <Stack.Screen name="profile" options={{ title: 'Profil' }} />
       <Stack.Screen name="calendar" options={{ title: 'Kalender' }} />
       <Stack.Screen name="messages" options={{ title: 'Nachrichten' }} />
       <Stack.Screen name="f2f" options={{ title: 'Face2Face' }} />

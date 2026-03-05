@@ -10,9 +10,13 @@ import type { StudioDashboardKPIs } from '../../types/studio';
 
 const QUICK_ACTIONS: { route: string; icon: IconName; label: string }[] = [
   { route: '/studio/courses', icon: 'book', label: 'Kurse' },
+  { route: '/studio/content', icon: 'photo', label: 'Mediathek' },
+  { route: '/studio/participants', icon: 'users', label: 'Teilnehmer' },
+  { route: '/studio/finance', icon: 'wallet', label: 'Finanzen' },
   { route: '/studio/calendar', icon: 'calendar-event', label: 'Kalender' },
-  { route: '/studio/f2f', icon: 'users', label: 'F2F' },
+  { route: '/studio/f2f', icon: 'video', label: 'F2F' },
   { route: '/studio/messages', icon: 'message-circle', label: 'Nachrichten' },
+  { route: '/studio/profile', icon: 'user', label: 'Profil' },
 ];
 
 export default function StudioDashboard() {

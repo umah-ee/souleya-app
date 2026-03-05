@@ -313,6 +313,29 @@ export interface CreateAutoMailData {
   is_active?: boolean;
 }
 
+// ── Mentor-Profil ───────────────────────────────────────
+export interface MentorProfile {
+  id: string;
+  email: string | null;
+  username: string | null;
+  display_name: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  mentor_bio: string | null;
+  mentor_tagline: string | null;
+  specializations: string[];
+  mentor_website: string | null;
+  mentor_social: Record<string, string>;
+}
+
+export interface UpdateMentorProfileData {
+  mentor_bio?: string;
+  mentor_tagline?: string;
+  specializations?: string[];
+  mentor_website?: string;
+  mentor_social?: Record<string, string>;
+}
+
 // ── Dashboard KPIs ───────────────────────────────────────
 export interface StudioDashboardKPIs {
   total_students: number;

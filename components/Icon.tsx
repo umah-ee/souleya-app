@@ -58,7 +58,17 @@ export type IconName =
   | 'layout-dashboard'
   | 'wallet'
   | 'calendar-event'
-  | 'shield';
+  | 'shield'
+  | 'video'
+  | 'microphone'
+  | 'file-text'
+  | 'chart-line'
+  | 'clock'
+  | 'world'
+  | 'brand-instagram'
+  | 'brand-youtube'
+  | 'brand-tiktok'
+  | 'brand-linkedin';
 
 interface IconProps {
   name: IconName;
@@ -429,6 +439,77 @@ const paths: Record<IconName, React.ReactNode> = {
     <>
       <Path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3" />
       <Path d="M9 12l2 2l4 -4" />
+    </>
+  ),
+  video: (
+    <>
+      <Path d="M15 10l4.553 -2.276a1 1 0 0 1 1.447 .894v6.764a1 1 0 0 1 -1.447 .894l-4.553 -2.276v-4z" />
+      <Rect x={3} y={6} width={12} height={12} rx={2} />
+    </>
+  ),
+  microphone: (
+    <>
+      <Path d="M9 2m0 3a3 3 0 0 1 3 -3h0a3 3 0 0 1 3 3v5a3 3 0 0 1 -3 3h0a3 3 0 0 1 -3 -3z" />
+      <Path d="M5 10a7 7 0 0 0 14 0" />
+      <Path d="M8 21l8 0" />
+      <Path d="M12 17l0 4" />
+    </>
+  ),
+  'file-text': (
+    <>
+      <Path d="M14 3v4a1 1 0 0 0 1 1h4" />
+      <Path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z" />
+      <Path d="M9 9l1 0" />
+      <Path d="M9 13l6 0" />
+      <Path d="M9 17l6 0" />
+    </>
+  ),
+  'chart-line': (
+    <>
+      <Path d="M4 19l16 0" />
+      <Path d="M4 15l4 -6l4 2l4 -5l4 4" />
+    </>
+  ),
+  clock: (
+    <>
+      <Path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+      <Path d="M12 7l0 5l3 3" />
+    </>
+  ),
+  world: (
+    <>
+      <Path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+      <Path d="M3.6 9h16.8" />
+      <Path d="M3.6 15h16.8" />
+      <Path d="M11.5 3a17 17 0 0 0 0 18" />
+      <Path d="M12.5 3a17 17 0 0 1 0 18" />
+    </>
+  ),
+  'brand-instagram': (
+    <>
+      <Rect x={4} y={4} width={16} height={16} rx={4} />
+      <Path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+      <Path d="M16.5 7.5l0 .01" />
+    </>
+  ),
+  'brand-youtube': (
+    <>
+      <Rect x={3} y={5} width={18} height={14} rx={4} />
+      <Path d="M10 9l5 3l-5 3z" />
+    </>
+  ),
+  'brand-tiktok': (
+    <>
+      <Path d="M21 7.917v4.034a9.948 9.948 0 0 1 -5 -1.951v4.5a6.5 6.5 0 1 1 -8 -6.326v4.326a2.5 2.5 0 1 0 4 2v-11.5h4.083a6.005 6.005 0 0 0 4.917 4.917z" />
+    </>
+  ),
+  'brand-linkedin': (
+    <>
+      <Rect x={4} y={4} width={16} height={16} rx={2} />
+      <Path d="M8 11l0 5" />
+      <Path d="M8 8l0 .01" />
+      <Path d="M12 16l0 -5" />
+      <Path d="M16 16v-3a2 2 0 0 0 -4 0" />
     </>
   ),
 };
