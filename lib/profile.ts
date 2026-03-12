@@ -13,6 +13,17 @@ export async function updateProfile(data: UpdateProfileData): Promise<Profile> {
   });
 }
 
+// ── Referral-Daten ──
+export interface ReferralData {
+  invited: Array<{ display_name: string | null; avatar_url: string | null; created_at: string }>;
+  count: number;
+  seeds_earned: number;
+}
+
+export async function fetchReferrals(): Promise<ReferralData> {
+  return apiFetch<ReferralData>('/users/me/referrals');
+}
+
 export async function uploadAvatar(file: {
   uri: string;
   name: string;
