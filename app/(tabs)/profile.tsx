@@ -12,6 +12,7 @@ import ProfileStudioCard from '../../components/profile/ProfileStudioCard';
 import ProfileInterests from '../../components/profile/ProfileInterests';
 import ProfileStats from '../../components/profile/ProfileStats';
 import ProfilePrivateRow from '../../components/profile/ProfilePrivateRow';
+import SoulProgressCard from '../../components/profile/SoulProgressCard';
 
 // ── Panels ──
 import SettingsPanel from '../../components/profile/SettingsPanel';
@@ -106,6 +107,11 @@ export default function ProfileScreen() {
 
         {/* ─── Stats (Beitraege/Kontakte/Circles) ─── */}
         <ProfileStats profile={profile} colors={colors} />
+
+        {/* ─── Soul Progress (ab Level 2, bis Level 4) ─── */}
+        <View style={{ paddingHorizontal: 16, marginTop: 8 }}>
+          <SoulProgressCard soulLevel={profile.soul_level} />
+        </View>
 
         {/* ─── Seeds + Einladungen Chips ─── */}
         <ProfilePrivateRow

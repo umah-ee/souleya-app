@@ -1,10 +1,14 @@
-import { useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Modal, Pressable, StyleSheet } from 'react-native';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { View, Text, TouchableOpacity, Modal, Pressable, StyleSheet, Platform } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from '../../components/Icon';
 import { useChatStore } from '../../store/chat';
 import { useThemeStore } from '../../store/theme';
 import { fetchProfile } from '../../lib/profile';
+import type { Profile } from '../../types/profile';
+import OnboardingWizard from '../../components/onboarding/OnboardingWizard';
+import NotificationBell from '../../components/notifications/NotificationBell';
 
 function TabBarIcon({ name, color }: { name: IconName; color: string }) {
   return <Icon name={name} size={20} color={color} />;
@@ -23,13 +27,28 @@ export default function TabsLayout() {
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const [showMehr, setShowMehr] = useState(false);
   const [isMentor, setIsMentor] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
+  const loadProfile = useCallback(() => {
     fetchProfile().then((p) => {
+      setProfile(p);
       if ((p as { is_mentor?: boolean }).is_mentor) setIsMentor(true);
+      // Zeige Onboarding-Wizard wenn Soul Level 1
+      setShowWizard(p.soul_level === 1);
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  const handleLevelUp = useCallback(() => {
+    setShowWizard(false);
+    // Profil neu laden fuer aktuellen Soul Level
+    loadProfile();
+  }, [loadProfile]);
 
   const mehrItems = useMemo(
     () => BASE_mehrItems.filter((item) => !item.mentorOnly || isMentor),
@@ -41,11 +60,30 @@ export default function TabsLayout() {
     router.push(route as never);
   };
 
+  const insets = useSafeAreaInsets();
+
   return (
     <>
       <Tabs
         screenOptions={{
-          headerShown: false,
+          headerShown: true,
+          headerStyle: {
+            backgroundColor: colors.tabBarBg,
+            shadowColor: 'transparent',
+            elevation: 0,
+          },
+          headerTitleStyle: {
+            fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+            fontStyle: 'italic',
+            fontWeight: '600',
+            fontSize: 17,
+            color: colors.textH,
+          },
+          headerRight: () => (
+            <View style={{ marginRight: 12 }}>
+              <NotificationBell />
+            </View>
+          ),
           tabBarStyle: {
             backgroundColor: colors.tabBarBg,
             borderTopColor: colors.tabBarBorder,
@@ -164,6 +202,11 @@ export default function TabsLayout() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Onboarding Wizard (Soul Level 1) */}
+      {showWizard && profile && (
+        <OnboardingWizard profile={profile} onLevelUp={handleLevelUp} />
+      )}
     </>
   );
 }

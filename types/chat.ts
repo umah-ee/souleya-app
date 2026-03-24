@@ -41,6 +41,10 @@ export interface ChannelMember {
   muted_until: string | null;
   joined_at: string;
   profile: MemberProfile;
+  /** Flattened from profile for convenience */
+  display_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
 }
 
 export interface ChannelOverview {
@@ -88,6 +92,7 @@ export interface Message {
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;
+  pinned_at: string | null;
   author: MessageAuthor;
   reply_message?: ReplyMessage | null;
 }

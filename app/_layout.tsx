@@ -1,73 +1,45 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter, useSegments } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/auth';
 import { useThemeStore } from '../store/theme';
-import { registerPushToken } from '../lib/notifications';
+import { useNotificationStore } from '../store/notifications';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import CallProvider from '../components/call/CallProvider';
 
 function RootLayoutNav() {
-  const { session, setSession, setLoading } = useAuthStore();
+  const { session, loading, setSession, setLoading } = useAuthStore();
   const themeMode = useThemeStore((s) => s.mode);
   const loadSavedTheme = useThemeStore((s) => s.loadSavedTheme);
+  const initNotifications = useNotificationStore((s) => s.init);
+  const cleanupNotifications = useNotificationStore((s) => s.cleanup);
   const router = useRouter();
   const segments = useSegments();
-  const pushRegistered = useRef(false);
 
   useEffect(() => {
-    loadSavedTheme();
+    try {
+      loadSavedTheme();
+    } catch (err) {
+      console.warn('Theme laden fehlgeschlagen:', err);
+    }
   }, []);
 
-  // OneSignal Push Notifications initialisieren
-  useEffect(() => {
-    async function initPush() {
-      try {
-        const OneSignal = (await import('react-native-onesignal')).default;
-        const appId = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
-        if (!appId) return;
-
-        OneSignal.initialize(appId);
-        OneSignal.Notifications.requestPermission(true);
-
-        // Deep-Link Handler fuer Push Notifications
-        OneSignal.Notifications.addEventListener('click', (event: any) => {
-          const data = event.notification.additionalData as Record<string, string> | undefined;
-          if (data?.route) {
-            router.push(data.route as never);
-          }
-        });
-      } catch {
-        // OneSignal nicht installiert (Expo Go) – uebersprungen
-      }
-    }
-    initPush();
-  }, []);
-
-  // Player-ID an API senden nach Auth
-  useEffect(() => {
-    if (!session || pushRegistered.current) return;
-    async function registerPush() {
-      try {
-        const OneSignal = (await import('react-native-onesignal')).default;
-        const id = await OneSignal.User.pushSubscription.getIdAsync();
-        if (id) {
-          await registerPushToken(id);
-          pushRegistered.current = true;
-        }
-      } catch {
-        // OneSignal nicht verfuegbar
-      }
-    }
-    registerPush();
-  }, [session]);
+  // TODO: OneSignal Push Notifications – erst aktivieren wenn react-native-onesignal installiert ist
 
   useEffect(() => {
     // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+      })
+      .catch((err) => {
+        console.warn('Session-Check fehlgeschlagen:', err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -79,7 +51,20 @@ function RootLayoutNav() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Notifications Init/Cleanup bei Session-Wechsel
   useEffect(() => {
+    if (session?.user?.id) {
+      initNotifications(session.user.id);
+    } else {
+      cleanupNotifications();
+    }
+    return () => cleanupNotifications();
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    // Warte bis Session-Check abgeschlossen ist
+    if (loading) return;
+
     const inAuthGroup = segments[0] === '(auth)';
 
     if (!session && !inAuthGroup) {
@@ -87,7 +72,7 @@ function RootLayoutNav() {
     } else if (session && inAuthGroup) {
       router.replace('/(tabs)');
     }
-  }, [session, segments]);
+  }, [session, loading, segments]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -105,9 +90,11 @@ export default function RootLayout() {
   const themeMode = useThemeStore((s) => s.mode);
 
   return (
-    <>
+    <ErrorBoundary>
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
-      <RootLayoutNav />
-    </>
+      <CallProvider>
+        <RootLayoutNav />
+      </CallProvider>
+    </ErrorBoundary>
   );
 }

@@ -1,9 +1,50 @@
 import { Platform } from 'react-native';
 import { apiFetch } from './api';
 
-/**
- * Push-Token (OneSignal Player-ID) an die API senden
- */
+// ── Types ──
+
+export interface AppNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  actor_id: string | null;
+  actor_avatar_url?: string | null;
+  actor_display_name?: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+// ── API Calls ──
+
+export async function fetchNotifications(page = 1, limit = 20): Promise<AppNotification[]> {
+  return apiFetch<AppNotification[]>(`/notifications?page=${page}&limit=${limit}`);
+}
+
+export async function fetchUnreadCount(): Promise<number> {
+  const res = await apiFetch<{ count: number }>('/notifications/unread-count');
+  return res.count;
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await apiFetch(`/notifications/${id}/read`, { method: 'PATCH' });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await apiFetch('/notifications/read-all', { method: 'PATCH' });
+}
+
+export async function deleteNotification(id: string): Promise<void> {
+  await apiFetch(`/notifications/${id}`, { method: 'DELETE' });
+}
+
+export async function deleteReadNotifications(): Promise<void> {
+  await apiFetch('/notifications/read', { method: 'DELETE' });
+}
+
+// ── Push Token (OneSignal) ──
+
 export async function registerPushToken(playerId: string) {
   const platform = Platform.OS === 'ios' ? 'ios' : 'android';
   return apiFetch('/notifications/register', {
@@ -12,9 +53,6 @@ export async function registerPushToken(playerId: string) {
   });
 }
 
-/**
- * Push-Token entfernen (z.B. bei Logout)
- */
 export async function unregisterPushToken(playerId: string) {
   return apiFetch('/notifications/unregister', {
     method: 'DELETE',

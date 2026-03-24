@@ -68,6 +68,11 @@ export interface ThemeColors {
   ensoGradientStart: string;
   ensoGradientEnd: string;
   ensoDotColor: string;
+
+  // Convenience aliases
+  text: string;
+  cardBg: string;
+  bgElevated: string;
 }
 
 // ═══════════════════════════════════════════
@@ -137,6 +142,11 @@ export const lightTheme: ThemeColors = {
   ensoGradientStart: '#A8894E',
   ensoGradientEnd: '#D4BC8B',
   ensoDotColor: '#D4BC8B',
+
+  // Convenience aliases
+  text: '#3E3020',
+  cardBg: 'rgba(255,255,255,0.45)',
+  bgElevated: '#F5EFE6',
 };
 
 export const darkTheme: ThemeColors = {
@@ -202,6 +212,11 @@ export const darkTheme: ThemeColors = {
   ensoGradientStart: '#A8894E',
   ensoGradientEnd: '#D4BC8B',
   ensoDotColor: '#D4BC8B',
+
+  // Convenience aliases
+  text: '#c8c0b8',
+  cardBg: 'rgba(255,255,255,0.06)',
+  bgElevated: '#282828',
 };
 
 // ═══════════════════════════════════════════
@@ -271,6 +286,11 @@ export const duskLightTheme: ThemeColors = {
   ensoGradientStart: '#8B5CF6',
   ensoGradientEnd: '#F472B6',
   ensoDotColor: '#A78BFA',
+
+  // Convenience aliases
+  text: '#382850',
+  cardBg: 'rgba(255,255,255,0.55)',
+  bgElevated: '#FAF5FF',
 };
 
 export const duskDarkTheme: ThemeColors = {
@@ -336,4 +356,9 @@ export const duskDarkTheme: ThemeColors = {
   ensoGradientStart: '#8B5CF6',
   ensoGradientEnd: '#F472B6',
   ensoDotColor: '#A78BFA',
+
+  // Convenience aliases
+  text: '#C5C0CE',
+  cardBg: 'rgba(255,255,255,0.03)',
+  bgElevated: '#222228',
 };

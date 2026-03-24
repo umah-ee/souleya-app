@@ -134,6 +134,56 @@ export async function fetchUnreadCounts() {
   return apiFetch<UnreadCount[]>('/chat/unread');
 }
 
+export async function fetchReadStatus(channelId: string) {
+  return apiFetch<Record<string, string>>(`/chat/channels/${channelId}/read-status`);
+}
+
+// ── Mute / Unmute ──
+
+export async function muteChannel(channelId: string, until?: string) {
+  return apiFetch<{ success: boolean }>(`/chat/channels/${channelId}/mute`, {
+    method: 'POST',
+    body: JSON.stringify({ until }),
+  });
+}
+
+export async function unmuteChannel(channelId: string) {
+  return apiFetch<{ success: boolean }>(`/chat/channels/${channelId}/mute`, {
+    method: 'DELETE',
+  });
+}
+
+// ── Search ──
+
+export async function searchMessages(channelId: string, query: string) {
+  return apiFetch<{ data: Message[] }>(
+    `/chat/channels/${channelId}/messages/search?q=${encodeURIComponent(query)}`,
+  );
+}
+
+// ── Pin ──
+
+export async function pinMessage(messageId: string) {
+  return apiFetch<{ success: boolean }>(`/chat/messages/${messageId}/pin`, { method: 'POST' });
+}
+
+export async function unpinMessage(messageId: string) {
+  return apiFetch<{ success: boolean }>(`/chat/messages/${messageId}/pin`, { method: 'DELETE' });
+}
+
+export async function fetchPinnedMessages(channelId: string) {
+  return apiFetch<Message[]>(`/chat/channels/${channelId}/pinned`);
+}
+
+// ── Forward ──
+
+export async function forwardMessage(messageId: string, targetChannelId: string) {
+  return apiFetch<Message>(`/chat/messages/${messageId}/forward`, {
+    method: 'POST',
+    body: JSON.stringify({ target_channel_id: targetChannelId }),
+  });
+}
+
 // ══════════════════════════════════════════════════════════════
 // POLLS
 // ══════════════════════════════════════════════════════════════

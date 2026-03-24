@@ -14,11 +14,17 @@ import type { ChannelDetail, Message, ReactionSummary } from '../../types/chat';
 import {
   fetchChannel, fetchMessages, sendMessage, markChannelAsRead,
   deleteMessage as apiDeleteMessage, editMessage as apiEditMessage,
-  addReaction, removeReaction, uploadChatImage,
+  addReaction, removeReaction, uploadChatImage, fetchReadStatus,
+  pinMessage, unpinMessage, searchMessages, muteChannel, unmuteChannel,
+  forwardMessage, fetchChannels,
 } from '../../lib/chat';
 import { supabase } from '../../lib/supabase';
 import { Icon } from '../../components/Icon';
+import { useCall } from '../../components/call/CallProvider';
+import { useVoiceRecorder } from '../../hooks/useVoiceRecorder';
 import PollBubble from '../../components/chat/PollBubble';
+import VoicePlayer from '../../components/chat/VoicePlayer';
+import MarkdownText from '../../components/chat/MarkdownText';
 import CreatePollModal from '../../components/chat/CreatePollModal';
 import SeedsTransferModal from '../../components/chat/SeedsTransferModal';
 import GroupInfoSheet from '../../components/chat/GroupInfoSheet';
@@ -40,6 +46,8 @@ export default function ChatRoomScreen() {
   const setTotalUnread = useChatStore((s) => s.setTotalUnread);
   const colors = useThemeStore((s) => s.colors);
   const userId = session?.user?.id;
+  const { startCall } = useCall();
+  const voiceRecorder = useVoiceRecorder(userId ?? '');
 
   const [channel, setChannel] = useState<ChannelDetail | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -66,6 +74,10 @@ export default function ChatRoomScreen() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [pollRefreshTrigger, setPollRefreshTrigger] = useState(0);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [readStatus, setReadStatus] = useState<Record<string, string>>({}); // userId → last_read_at
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -211,6 +223,55 @@ export default function ChatRoomScreen() {
       supabase.removeChannel(sub);
     };
   }, [channelId, userId]);
+
+  // ── Typing Indicator (Supabase Presence) ────────────────────
+  useEffect(() => {
+    if (!channelId || !userId) return;
+
+    const presenceCh = supabase.channel(`presence:${channelId}`, {
+      config: { presence: { key: userId } },
+    });
+    presenceChannelRef.current = presenceCh;
+
+    presenceCh
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceCh.presenceState();
+        const typing: string[] = [];
+        for (const [uid, presences] of Object.entries(state)) {
+          if (uid === userId) continue;
+          const p = presences as any[];
+          if (p.some((pr) => pr.typing)) typing.push(uid);
+        }
+        setTypingUsers(typing);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceCh.track({ typing: false });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(presenceCh);
+      presenceChannelRef.current = null;
+    };
+  }, [channelId, userId]);
+
+  // ── Read Status laden ──────────────────────────────────────
+  useEffect(() => {
+    if (!channelId) return;
+    fetchReadStatus(channelId).then(setReadStatus).catch(() => {});
+  }, [channelId, messages.length]);
+
+  // ── Typing senden bei Texteingabe ──────────────────────────
+  const sendTyping = useCallback(() => {
+    const ch = presenceChannelRef.current;
+    if (!ch) return;
+    ch.track({ typing: true });
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      ch.track({ typing: false });
+    }, 3000);
+  }, []);
 
   // ── Aeltere Nachrichten laden ─────────────────────────────
   const loadOlderMessages = async () => {
@@ -405,6 +466,82 @@ export default function ChatRoomScreen() {
     // Die Nachricht kommt per Realtime
   };
 
+  // ── Pin / Forward / Search / Mute ──────────────────────────
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardingMsg, setForwardingMsg] = useState<Message | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Message[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+
+  // Mute-Status pruefen
+  useEffect(() => {
+    if (!channel) return;
+    const myMembership = channel.members.find((m) => m.user_id === userId);
+    setIsMuted(!!myMembership?.muted_until);
+  }, [channel, userId]);
+
+  const handlePin = async (msg: Message) => {
+    setActionMsg(null);
+    try {
+      if (msg.pinned_at) {
+        await unpinMessage(msg.id);
+        setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, pinned_at: null, pinned_by: null } : m));
+      } else {
+        await pinMessage(msg.id);
+        setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, pinned_at: new Date().toISOString(), pinned_by: userId } : m));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleForward = (msg: Message) => {
+    setActionMsg(null);
+    setForwardingMsg(msg);
+    setShowForwardModal(true);
+  };
+
+  const handleForwardToChannel = async (targetChannelId: string) => {
+    if (!forwardingMsg) return;
+    try {
+      await forwardMessage(forwardingMsg.id, targetChannelId);
+      setShowForwardModal(false);
+      setForwardingMsg(null);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim() || !channelId) return;
+    setSearching(true);
+    try {
+      const result = await searchMessages(channelId, searchQuery.trim());
+      setSearchResults(result.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleToggleMute = async () => {
+    if (!channelId) return;
+    try {
+      if (isMuted) {
+        await unmuteChannel(channelId);
+        setIsMuted(false);
+      } else {
+        await muteChannel(channelId);
+        setIsMuted(true);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // ── Channel-Name ──────────────────────────────────────────
   const getChannelName = () => {
     if (!channel) return '';
@@ -488,6 +625,26 @@ export default function ChatRoomScreen() {
       );
     }
 
+    // Voice-Nachricht
+    if (msg.type === 'voice' && msg.content) {
+      return (
+        <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
+          <View style={{ maxWidth: '75%' }}>
+            {showAuthor && <Text style={styles.bubbleAuthor}>{authorName}</Text>}
+            <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
+              <VoicePlayer uri={msg.content} durationMs={(msg.metadata?.duration_ms as number) ?? 0} />
+              <View style={[styles.bubbleMeta, isOwn && { alignSelf: 'flex-end' }]}>
+                <Text style={styles.bubbleTime}>
+                  {new Date(msg.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+                {isOwn && <ReadReceipt msgCreatedAt={msg.created_at} readStatus={readStatus} userId={userId!} />}
+              </View>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
     // Image-Nachricht (Einzel- oder Multi-Bild)
     if (msg.type === 'image' && msg.content) {
       const imageUrls: string[] = (msg.metadata?.image_urls as string[]) ?? [msg.content];
@@ -564,12 +721,13 @@ export default function ChatRoomScreen() {
             activeOpacity={0.8}
             onLongPress={() => setActionMsg(msg)}
           >
-            <Text style={styles.bubbleContent}>{msg.content}</Text>
+            <MarkdownText text={msg.content ?? ''} />
             <View style={[styles.bubbleMeta, isOwn && { alignSelf: 'flex-end' }]}>
               {msg.edited_at && <Text style={styles.bubbleEdited}>bearbeitet</Text>}
               <Text style={styles.bubbleTime}>
                 {new Date(msg.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
               </Text>
+              {isOwn && <ReadReceipt msgCreatedAt={msg.created_at} readStatus={readStatus} userId={userId!} />}
             </View>
           </TouchableOpacity>
 
@@ -633,6 +791,49 @@ export default function ChatRoomScreen() {
           <Text style={[styles.headerSub, { color: colors.textMuted }]}>
             {channel?.type === 'direct' ? 'Direkt' : `${channel?.members.length ?? 0} Mitglieder`}
           </Text>
+        </TouchableOpacity>
+
+        {/* Call Buttons (nur Direct Chats) */}
+        {channel?.type === 'direct' && (() => {
+          const partner = channel.members.find((m: any) => m.user_id !== userId);
+          return partner ? (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => startCall({
+                  channelId: channelId!,
+                  partnerId: partner.user_id,
+                  partnerName: partner.display_name || partner.username || 'Unbekannt',
+                  partnerAvatar: partner.avatar_url,
+                  video: false,
+                })}
+                style={{ padding: 4 }}
+              >
+                <Icon name="microphone" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => startCall({
+                  channelId: channelId!,
+                  partnerId: partner.user_id,
+                  partnerName: partner.display_name || partner.username || 'Unbekannt',
+                  partnerAvatar: partner.avatar_url,
+                  video: true,
+                })}
+                style={{ padding: 4 }}
+              >
+                <Icon name="video" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          ) : null;
+        })()}
+
+        {/* Search Button */}
+        <TouchableOpacity onPress={() => setShowSearch(true)} style={{ padding: 4 }}>
+          <Icon name="search" size={18} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        {/* Mute Button */}
+        <TouchableOpacity onPress={handleToggleMute} style={{ padding: 4 }}>
+          <Icon name={isMuted ? 'bell-off' : 'bell'} size={18} color={isMuted ? '#E53E3E' : colors.textMuted} />
         </TouchableOpacity>
 
         {isGroupChannel && (
@@ -739,6 +940,9 @@ export default function ChatRoomScreen() {
           </View>
         )}
 
+        {/* Typing Indicator */}
+        <TypingIndicator users={typingUsers} channel={channel} />
+
         {/* Input */}
         <View style={[styles.inputRow, { borderTopColor: colors.dividerL }]}>
           {/* Photo Button */}
@@ -780,21 +984,57 @@ export default function ChatRoomScreen() {
           <TextInput
             style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
             value={text}
-            onChangeText={setText}
+            onChangeText={(t) => { setText(t); sendTyping(); }}
             placeholder={editingMsg ? 'Nachricht bearbeiten ...' : 'Nachricht schreiben ...'}
             placeholderTextColor={colors.textMuted}
             maxLength={5000}
             returnKeyType="send"
             onSubmitEditing={editingMsg ? handleSaveEdit : handleSend}
           />
-          <TouchableOpacity
-            style={[styles.sendBtn, { backgroundColor: colors.gold }, (!text.trim() || sending) && { backgroundColor: colors.goldBg }]}
-            onPress={editingMsg ? handleSaveEdit : handleSend}
-            disabled={!text.trim() || sending}
-            activeOpacity={0.7}
-          >
-            <Icon name="send" size={16} color={text.trim() && !sending ? colors.textOnGold : colors.textMuted} />
-          </TouchableOpacity>
+          {/* Send / Voice Button */}
+          {voiceRecorder.isRecording ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#E53E3E' }}>
+                {Math.floor(voiceRecorder.duration / 60)}:{(voiceRecorder.duration % 60).toString().padStart(2, '0')}
+              </Text>
+              <TouchableOpacity onPress={voiceRecorder.cancelRecording} style={{ padding: 4 }}>
+                <Icon name="x" size={18} color="#E53E3E" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sendBtn, { backgroundColor: colors.gold }]}
+                onPress={async () => {
+                  const url = await voiceRecorder.stopRecording();
+                  if (url && channelId) {
+                    await sendMessage(channelId, {
+                      type: 'voice',
+                      content: url,
+                      metadata: { duration_ms: voiceRecorder.duration * 1000 },
+                    });
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Icon name="send" size={16} color={colors.textOnGold} />
+              </TouchableOpacity>
+            </View>
+          ) : text.trim() || editingMsg ? (
+            <TouchableOpacity
+              style={[styles.sendBtn, { backgroundColor: colors.gold }, (!text.trim() || sending) && { backgroundColor: colors.goldBg }]}
+              onPress={editingMsg ? handleSaveEdit : handleSend}
+              disabled={!text.trim() || sending}
+              activeOpacity={0.7}
+            >
+              <Icon name="send" size={16} color={text.trim() && !sending ? colors.textOnGold : colors.textMuted} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.sendBtn, { backgroundColor: `${colors.gold}20` }]}
+              onPress={voiceRecorder.startRecording}
+              activeOpacity={0.7}
+            >
+              <Icon name="microphone" size={16} color={colors.gold} />
+            </TouchableOpacity>
+          )}
         </View>
       </KeyboardAvoidingView>
 
@@ -807,6 +1047,8 @@ export default function ChatRoomScreen() {
         onEdit={startEditing}
         onDelete={(msgId) => handleDelete(msgId)}
         onReact={handleReaction}
+        onPin={handlePin}
+        onForward={handleForward}
       />
 
       {/* Emoji Picker Modal */}
@@ -858,6 +1100,57 @@ export default function ChatRoomScreen() {
           onChannelUpdated={(updated) => setChannel(updated)}
         />
       )}
+
+      {/* Search Modal */}
+      <Modal visible={showSearch} transparent animationType="slide" onRequestClose={() => setShowSearch(false)}>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.bgSolid }]}>
+          <View style={[styles.header, { borderBottomColor: colors.dividerL }]}>
+            <TouchableOpacity onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }} style={{ padding: 4 }}>
+              <Icon name="arrow-left" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TextInput
+              style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Nachrichten durchsuchen …"
+              placeholderTextColor={colors.textMuted}
+              returnKeyType="search"
+              onSubmitEditing={handleSearch}
+              autoFocus
+            />
+            {searching && <ActivityIndicator size="small" color={colors.gold} />}
+          </View>
+          <FlatList
+            data={searchResults}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ padding: 12 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.dividerL }}
+                onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }}
+              >
+                <Text style={{ fontSize: 11, color: colors.gold, marginBottom: 2 }}>
+                  {item.author?.display_name ?? 'Anonym'} · {new Date(item.created_at).toLocaleDateString('de-DE')}
+                </Text>
+                <Text style={{ fontSize: 14, color: colors.text }} numberOfLines={3}>{item.content}</Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              searchQuery.trim() && !searching ? (
+                <Text style={{ textAlign: 'center', color: colors.textMuted, marginTop: 40 }}>Keine Ergebnisse</Text>
+              ) : null
+            }
+          />
+        </SafeAreaView>
+      </Modal>
+
+      {/* Forward Modal */}
+      <ForwardModal
+        visible={showForwardModal}
+        onClose={() => { setShowForwardModal(false); setForwardingMsg(null); }}
+        onSelect={handleForwardToChannel}
+        currentChannelId={channelId}
+      />
     </SafeAreaView>
   );
 }
@@ -876,7 +1169,7 @@ function InlineChallengeEmbed({ challengeId }: { challengeId: string }) {
 // ── MessageActionSheet ─────────────────────────────────────────
 
 function MessageActionSheet({
-  message, isOwn, onClose, onReply, onEdit, onDelete, onReact,
+  message, isOwn, onClose, onReply, onEdit, onDelete, onReact, onPin, onForward,
 }: {
   message: Message | null;
   isOwn?: boolean;
@@ -885,6 +1178,8 @@ function MessageActionSheet({
   onEdit: (msg: Message) => void;
   onDelete: (msgId: string) => void;
   onReact: (msg: Message) => void;
+  onPin: (msg: Message) => void;
+  onForward: (msg: Message) => void;
 }) {
   if (!message) return null;
 
@@ -924,6 +1219,28 @@ function MessageActionSheet({
             </TouchableOpacity>
           )}
 
+          {/* Anpinnen */}
+          <TouchableOpacity
+            style={styles.sheetAction}
+            onPress={() => onPin(message)}
+            activeOpacity={0.7}
+          >
+            <Icon name="bookmark" size={18} color="#C8A96E" />
+            <Text style={styles.sheetActionText}>
+              {message.pinned_at ? 'Lospinnen' : 'Anpinnen'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Weiterleiten */}
+          <TouchableOpacity
+            style={styles.sheetAction}
+            onPress={() => onForward(message)}
+            activeOpacity={0.7}
+          >
+            <Icon name="share" size={18} color="#C8A96E" />
+            <Text style={styles.sheetActionText}>Weiterleiten</Text>
+          </TouchableOpacity>
+
           {/* Loeschen – nur eigene Nachrichten */}
           {isOwn && (
             <TouchableOpacity
@@ -948,6 +1265,48 @@ function MessageActionSheet({
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+// ── ReadReceipt (Haekchen) ─────────────────────────────────────
+
+function ReadReceipt({
+  msgCreatedAt, readStatus, userId,
+}: { msgCreatedAt: string; readStatus: Record<string, string>; userId: string }) {
+  // Pruefe ob mindestens ein anderer User die Nachricht gelesen hat
+  const msgTime = new Date(msgCreatedAt).getTime();
+  const isRead = Object.entries(readStatus).some(
+    ([uid, lastRead]) => uid !== userId && new Date(lastRead).getTime() >= msgTime,
+  );
+
+  return (
+    <Text style={{ fontSize: 11, marginLeft: 3, color: isRead ? '#C8A96E' : 'rgba(255,255,255,0.3)' }}>
+      {isRead ? '✓✓' : '✓'}
+    </Text>
+  );
+}
+
+// ── TypingIndicator ───────────────────────────────────────────
+
+function TypingIndicator({ users, channel }: { users: string[]; channel: any }) {
+  if (users.length === 0) return null;
+
+  // Versuche Display-Name aus Channel-Members zu finden
+  const names = users.map((uid) => {
+    const member = channel?.members?.find((m: any) => m.user_id === uid);
+    return member?.display_name || member?.username || 'Jemand';
+  });
+
+  const text = names.length === 1
+    ? `${names[0]} tippt …`
+    : `${names.slice(0, 2).join(' und ')} tippen …`;
+
+  return (
+    <View style={{ paddingHorizontal: 16, paddingVertical: 4 }}>
+      <Text style={{ fontSize: 12, fontWeight: '500', color: 'rgba(200,169,110,0.7)', fontStyle: 'italic' }}>
+        {text}
+      </Text>
+    </View>
   );
 }
 
@@ -1183,4 +1542,85 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(200,169,110,0.3)',
   },
   emojiText: { fontSize: 26 },
+});
+
+// ── ForwardModal (Kanal-Auswahl) ────────────────────────────────
+
+function ForwardModal({
+  visible, onClose, onSelect, currentChannelId,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (channelId: string) => void;
+  currentChannelId?: string;
+}) {
+  const colors = useThemeStore((s) => s.colors);
+  const [channels, setChannels] = useState<any[]>([]);
+  const [loadingChannels, setLoadingChannels] = useState(false);
+  const userId = useAuthStore((s) => s.session?.user?.id);
+
+  useEffect(() => {
+    if (!visible) return;
+    setLoadingChannels(true);
+    fetchChannels()
+      .then((chs) => setChannels(chs.filter((c: any) => c.id !== currentChannelId)))
+      .catch(console.error)
+      .finally(() => setLoadingChannels(false));
+  }, [visible, currentChannelId]);
+
+  const getDisplayName = (ch: any) => {
+    if (ch.type === 'direct') {
+      const partner = ch.members?.find((m: any) => m.user_id !== userId);
+      return partner?.display_name || partner?.username || 'Chat';
+    }
+    return ch.name || 'Gruppe';
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={fwdStyles.overlay} onPress={onClose}>
+        <Pressable style={[fwdStyles.content, { backgroundColor: colors.bgSolid }]}>
+          <Text style={[fwdStyles.title, { color: colors.textH }]}>Weiterleiten an</Text>
+          {loadingChannels ? (
+            <ActivityIndicator color={colors.gold} style={{ marginTop: 20 }} />
+          ) : (
+            <FlatList
+              data={channels}
+              keyExtractor={(item) => item.id}
+              style={{ maxHeight: 400 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[fwdStyles.row, { borderBottomColor: colors.dividerL }]}
+                  onPress={() => onSelect(item.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[fwdStyles.avatar, { backgroundColor: `${colors.gold}15` }]}>
+                    {item.avatar_url ? (
+                      <Image source={{ uri: item.avatar_url }} style={fwdStyles.avatarImg} />
+                    ) : (
+                      <Icon name={item.type === 'direct' ? 'user' : 'users'} size={16} color={colors.gold} />
+                    )}
+                  </View>
+                  <Text style={[fwdStyles.name, { color: colors.text }]} numberOfLines={1}>{getDisplayName(item)}</Text>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={{ textAlign: 'center', color: colors.textMuted, marginTop: 20 }}>Keine Kanäle</Text>
+              }
+            />
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const fwdStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  content: { borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 32, paddingTop: 16, paddingHorizontal: 16 },
+  title: { fontSize: 16, fontWeight: '500', textAlign: 'center', marginBottom: 16 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1 },
+  avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImg: { width: 36, height: 36, borderRadius: 18 },
+  name: { flex: 1, fontSize: 14, fontWeight: '400' },
 });
