@@ -47,10 +47,10 @@ export default function IncomingCallOverlay({
     return () => clearTimeout(timer);
   }, []);
 
-  // Caller hung up — lausche auf dem gleichen Call-Channel
+  // Caller hung up — lausche auf dem gleichen Call-Channel (MUSS call:${roomId} sein, nicht :cancel)
   useEffect(() => {
     const channel = supabase
-      .channel(`call:${roomId}:cancel`)
+      .channel(`call:${roomId}`)
       .on('broadcast', { event: 'call_end' }, () => {
         onReject();
       })

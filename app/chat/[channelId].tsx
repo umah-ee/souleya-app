@@ -76,8 +76,9 @@ export default function ChatRoomScreen() {
   const [showSeedsModal, setShowSeedsModal] = useState(false);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showActionsSheet, setShowActionsSheet] = useState(false);
   const [sendingLocation, setSendingLocation] = useState(false);
+  const [showLiveDurationPicker, setShowLiveDurationPicker] = useState(false);
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
@@ -472,9 +473,10 @@ export default function ChatRoomScreen() {
   };
 
   // ── Standort senden ──────────────────────────────────────
-  const handleSendLocation = async (isLive = false) => {
+  const handleSendLocation = async (isLive = false, durationMinutes = 15) => {
     if (!channelId || sendingLocation) return;
     setSendingLocation(true);
+    setShowActionsSheet(false);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') { setSendingLocation(false); return; }
@@ -488,13 +490,12 @@ export default function ChatRoomScreen() {
         title,
         subtitle,
         is_live: isLive,
-        expires_at: isLive ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : undefined,
+        expires_at: isLive ? new Date(Date.now() + durationMinutes * 60 * 1000).toISOString() : undefined,
       });
     } catch (e) {
       console.error('Standort senden fehlgeschlagen:', e);
     } finally {
       setSendingLocation(false);
-      setShowLocationModal(false);
     }
   };
 
@@ -894,7 +895,7 @@ export default function ChatRoomScreen() {
         })()}
 
         {/* Search Button */}
-        <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowLocationModal(false); setTimeout(() => setShowSearch(true), 100); }} style={styles.headerBtn}>
+        <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowActionsSheet(false); setTimeout(() => setShowSearch(true), 100); }} style={styles.headerBtn}>
           <Icon name="search" size={22} color={colors.textMuted} />
         </TouchableOpacity>
 
@@ -950,7 +951,7 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 10 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
       >
         <FlatList
           ref={flatListRef}
@@ -1046,67 +1047,23 @@ export default function ChatRoomScreen() {
         {/* Typing Indicator */}
         <TypingIndicator users={typingUsers} channel={channel} />
 
-        {/* Aktions-Leiste (ausklappbar via + Button) — nur wenn Suche nicht aktiv */}
-        {showLocationModal && !showSearch && (
-          <View style={[styles.actionsBar, { borderTopColor: colors.dividerL, backgroundColor: colors.bgSolid }]}>
-            <TouchableOpacity style={styles.actionBarItem} onPress={handlePickImage} activeOpacity={0.7}>
-              <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
-                <Icon name="photo" size={22} color={colors.gold} />
-              </View>
-              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Fotos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setShowLocationModal(false); setTimeout(() => setShowPollForm(true), 300); }} activeOpacity={0.7}>
-              <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
-                <Icon name="chart-bar" size={22} color={colors.gold} />
-              </View>
-              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Umfrage</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setShowLocationModal(false); setTimeout(() => setShowSeedsModal(true), 300); }} activeOpacity={0.7}>
-              <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
-                <Icon name="seedling" size={22} color={colors.gold} />
-              </View>
-              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Seeds</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setShowLocationModal(false); setTimeout(() => setShowChallengeModal(true), 300); }} activeOpacity={0.7}>
-              <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
-                <Icon name="target" size={22} color={colors.gold} />
-              </View>
-              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Challenge</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => handleSendLocation(false)} activeOpacity={0.7}>
-              <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
-                <Icon name="map-pin" size={22} color={colors.gold} />
-              </View>
-              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>
-                {sendingLocation ? '…' : 'Standort'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => handleSendLocation(true)} activeOpacity={0.7}>
-              <View style={[styles.actionBarIcon, { backgroundColor: 'rgba(34,197,94,0.12)' }]}>
-                <Icon name="current-location" size={22} color="#22C55E" />
-              </View>
-              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Live</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {/* Input — nur wenn Suche nicht aktiv */}
         {!showSearch && (
         <View style={[styles.inputRow, { borderTopColor: colors.dividerL }]}>
-          {/* Mehr-Aktionen Button (+) — oeffnet Aktions-Zeile */}
+          {/* Mehr-Aktionen Button (+) — oeffnet Bottom Sheet */}
           <TouchableOpacity
             style={styles.inputActionBtn}
-            onPress={() => setShowLocationModal((prev) => !prev)}
+            onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowActionsSheet(true), 100); }}
             activeOpacity={0.7}
           >
-            <Icon name="plus" size={24} color={showLocationModal ? colors.gold : colors.textMuted} />
+            <Icon name="plus" size={22} color={colors.textMuted} />
           </TouchableOpacity>
 
           <TextInput
-            style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
+            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
             value={text}
             onChangeText={(t) => { setText(t); sendTyping(); }}
-            placeholder={editingMsg ? 'Nachricht bearbeiten ...' : 'Nachricht schreiben ...'}
+            placeholder={editingMsg ? 'Nachricht bearbeiten …' : 'Nachricht schreiben …'}
             placeholderTextColor={colors.textMuted}
             maxLength={5000}
             returnKeyType="send"
@@ -1223,7 +1180,88 @@ export default function ChatRoomScreen() {
         />
       )}
 
-      {/* Search wird jetzt inline gerendert (siehe searchInlinePanel im Header-Bereich) */}
+      {/* Actions Bottom Sheet */}
+      <Modal visible={showActionsSheet} transparent animationType="slide" onRequestClose={() => setShowActionsSheet(false)}>
+        <Pressable style={styles.sheetOverlay} onPress={() => setShowActionsSheet(false)}>
+          <Pressable style={[styles.actionsSheet, { backgroundColor: colors.bgGradientStart || colors.bgSolid }]}>
+            <View style={[styles.handle, { backgroundColor: colors.goldBorderS || 'rgba(200,169,110,0.3)' }]} />
+            <Text style={[styles.actionsSheetTitle, { color: colors.goldDeep || colors.gold }]}>AKTION WAEHLEN</Text>
+            <View style={styles.actionsGrid}>
+              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); handlePickImage(); }} activeOpacity={0.7}>
+                <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
+                  <Icon name="photo" size={22} color={colors.gold} />
+                </View>
+                <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Fotos</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); setTimeout(() => setShowPollForm(true), 200); }} activeOpacity={0.7}>
+                <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
+                  <Icon name="chart-bar" size={22} color={colors.gold} />
+                </View>
+                <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Umfrage</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); setTimeout(() => setShowSeedsModal(true), 200); }} activeOpacity={0.7}>
+                <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
+                  <Icon name="seedling" size={22} color={colors.gold} />
+                </View>
+                <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Seeds</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); setTimeout(() => setShowChallengeModal(true), 200); }} activeOpacity={0.7}>
+                <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
+                  <Icon name="target" size={22} color={colors.gold} />
+                </View>
+                <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Challenge</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBarItem} onPress={() => { handleSendLocation(false); }} activeOpacity={0.7}>
+                <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
+                  <Icon name="map-pin" size={22} color={colors.gold} />
+                </View>
+                <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>
+                  {sendingLocation ? '…' : 'Standort'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); setShowLiveDurationPicker(true); }} activeOpacity={0.7}>
+                <View style={[styles.actionBarIcon, { backgroundColor: 'rgba(34,197,94,0.12)' }]}>
+                  <Icon name="current-location" size={22} color="#22C55E" />
+                </View>
+                <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Live</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Live-Standort Dauer-Picker */}
+      <Modal visible={showLiveDurationPicker} transparent animationType="fade" onRequestClose={() => setShowLiveDurationPicker(false)}>
+        <Pressable style={styles.sheetOverlay} onPress={() => setShowLiveDurationPicker(false)}>
+          <Pressable style={[styles.actionsSheet, { backgroundColor: colors.bgGradientStart || colors.bgSolid }]}>
+            <View style={[styles.handle, { backgroundColor: colors.goldBorderS || 'rgba(200,169,110,0.3)' }]} />
+            <Text style={[styles.actionsSheetTitle, { color: colors.goldDeep || colors.gold }]}>LIVE-STANDORT TEILEN</Text>
+            <Text style={{ fontSize: 13, color: colors.textMuted, textAlign: 'center', marginBottom: 16, paddingHorizontal: 20 }}>
+              Wie lange soll dein Standort geteilt werden?
+            </Text>
+            {[15, 30, 60, 120].map((mins) => (
+              <TouchableOpacity
+                key={mins}
+                style={[styles.durationOption, { borderColor: colors.dividerL }]}
+                onPress={() => { setShowLiveDurationPicker(false); handleSendLocation(true, mins); }}
+                activeOpacity={0.7}
+              >
+                <Icon name="current-location" size={18} color="#22C55E" />
+                <Text style={{ fontSize: 15, color: colors.text, fontWeight: '500' }}>
+                  {mins < 60 ? `${mins} Minuten` : `${mins / 60} ${mins === 60 ? 'Stunde' : 'Stunden'}`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={{ paddingVertical: 14, alignItems: 'center' }}
+              onPress={() => setShowLiveDurationPicker(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 14, color: colors.textMuted }}>Abbrechen</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Forward Modal */}
       <ForwardModal
@@ -1563,28 +1601,45 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
-  // Actions Bar (ausklappbar)
-  actionsBar: {
-    flexDirection: 'row', justifyContent: 'space-around',
-    paddingVertical: 12, paddingHorizontal: 8,
-    borderTopWidth: 1,
+  // Actions Bottom Sheet
+  actionsSheet: {
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingBottom: 40, paddingTop: 8,
+    borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.15)',
+  },
+  actionsSheetTitle: {
+    fontSize: 10, letterSpacing: 4, fontWeight: '600',
+    textAlign: 'center', marginBottom: 16, marginTop: 4,
+  },
+  actionsGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center',
+    paddingHorizontal: 16, gap: 8,
+  },
+  handle: {
+    width: 40, height: 4, borderRadius: 2,
+    alignSelf: 'center', marginTop: 8, marginBottom: 12,
   },
   actionBarItem: {
-    alignItems: 'center', gap: 6, paddingHorizontal: 6,
-    minWidth: 56,
+    alignItems: 'center', gap: 6, paddingHorizontal: 6, paddingVertical: 8,
+    minWidth: 72,
   },
   actionBarIcon: {
-    width: 48, height: 48, borderRadius: 24,
+    width: 52, height: 52, borderRadius: 26,
     alignItems: 'center', justifyContent: 'center',
   },
   actionBarLabel: {
     fontSize: 11, letterSpacing: 0.3, fontWeight: '500',
   },
+  durationOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingVertical: 14, paddingHorizontal: 24,
+    borderBottomWidth: 1,
+  },
 
   // Input
   inputRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 12, paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 8, paddingVertical: 6,
     borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.06)',
   },
   actionBtn: {
@@ -1592,17 +1647,17 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   inputActionBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 38, height: 38, borderRadius: 19,
     alignItems: 'center', justifyContent: 'center',
   },
   input: {
-    flex: 1, paddingHorizontal: 14, paddingVertical: 10,
+    flex: 1, paddingHorizontal: 14, paddingVertical: 8,
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1, borderColor: 'rgba(200,169,110,0.1)',
     borderRadius: 8, color: '#F0EDE8', fontSize: 14,
   },
   sendBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 38, height: 38, borderRadius: 19,
     backgroundColor: '#C8A96E',
     alignItems: 'center', justifyContent: 'center',
   },

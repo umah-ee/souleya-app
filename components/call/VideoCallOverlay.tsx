@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions,
+  View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions, Vibration,
 } from 'react-native';
 import { RTCView } from 'react-native-webrtc';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,9 @@ import { useWebRTC } from '../../hooks/useWebRTC';
 import { useRingtone } from '../../hooks/useRingtone';
 import { useThemeStore } from '../../store/theme';
 import { Icon } from '../Icon';
+
+let Haptics: any = null;
+try { Haptics = require('expo-haptics'); } catch {}
 
 const SCREEN = Dimensions.get('window');
 
@@ -42,11 +45,23 @@ export default function VideoCallOverlay({
     onEnded: onEnd,
   });
 
-  // Outgoing ringtone during ringing
+  // Outgoing ringtone — nur waehrend ringing/connecting, danach stoppen
   const isRinging = state === 'ringing' || state === 'connecting';
-  useRingtone(isRinging ? 'outgoing' : 'outgoing'); // Hook always called
+  useRingtone('outgoing', isRinging);
+
+  // Vibration stoppen + Haptic Feedback wenn Verbindung steht
+  useEffect(() => {
+    if (state === 'connected') {
+      try { Vibration.cancel(); } catch {}
+      try { Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+    }
+    if (state === 'ended') {
+      try { Vibration.cancel(); } catch {}
+    }
+  }, [state]);
 
   const handleEnd = () => {
+    try { Vibration.cancel(); } catch {}
     endCall();
   };
 

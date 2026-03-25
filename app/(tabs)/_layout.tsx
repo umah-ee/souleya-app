@@ -4,6 +4,7 @@ import { Tabs, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Icon, type IconName } from '../../components/Icon';
+import { useAuthStore } from '../../store/auth';
 import { useChatStore } from '../../store/chat';
 import { useThemeStore } from '../../store/theme';
 import { fetchProfile } from '../../lib/profile';
@@ -51,8 +52,9 @@ export default function TabsLayout() {
   const [showWizard, setShowWizard] = useState(false);
   const router = useRouter();
 
-  // Push Notifications registrieren sobald Profil geladen
-  usePushNotifications(profile?.id);
+  // Push Notifications registrieren mit Auth-User-ID (sofort verfuegbar)
+  const session = useAuthStore((s) => s.session);
+  usePushNotifications(session?.user?.id);
 
   const loadProfile = useCallback(() => {
     fetchProfile().then((p) => {
