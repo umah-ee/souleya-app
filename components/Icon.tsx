@@ -80,7 +80,11 @@ export type IconName =
   | 'eye'
   | 'eye-off'
   | 'mail'
-  | 'bell-off';
+  | 'bell-off'
+  | 'external-link'
+  | 'volume'
+  | 'volume-off'
+  | 'phone';
 
 interface IconProps {
   name: IconName;
@@ -597,6 +601,31 @@ const paths: Record<IconName, React.ReactNode> = {
       <Path d="M9.174 9.17a4 4 0 0 0 -.174 1.17v3a7 7 0 0 1 -2.33 2.33h11.66" />
       <Path d="M17.34 17.34a6.978 6.978 0 0 0 .66 -.34v-3a7 7 0 0 1 4 -6.27v-.07a4 4 0 0 0 -7.66 -1.61" />
       <Path d="M3 3l18 18" />
+    </>
+  ),
+  'external-link': (
+    <>
+      <Path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6" />
+      <Path d="M11 13l9 -9" />
+      <Path d="M15 4h5v5" />
+    </>
+  ),
+  'volume': (
+    <>
+      <Path d="M15 8a5 5 0 0 1 0 8" />
+      <Path d="M17.7 5a9 9 0 0 1 0 14" />
+      <Path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5" />
+    </>
+  ),
+  'volume-off': (
+    <>
+      <Path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5" />
+      <Path d="M16 10l4 4m0 -4l-4 4" />
+    </>
+  ),
+  'phone': (
+    <>
+      <Path d="M5 4h4l2 5l-2.5 1.5a11 11 0 0 0 5 5l1.5 -2.5l5 2v4a2 2 0 0 1 -2 2a16 16 0 0 1 -15 -15a2 2 0 0 1 2 -2" />
     </>
   ),
 };

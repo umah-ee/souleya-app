@@ -251,3 +251,27 @@ export async function uploadChatImage(uri: string, userId: string): Promise<stri
 
   return publicUrl;
 }
+
+// ══════════════════════════════════════════════════════════════
+// LOCATION SHARING
+// ══════════════════════════════════════════════════════════════
+
+export async function sendLocation(channelId: string, data: {
+  lat: number;
+  lng: number;
+  title?: string;
+  subtitle?: string;
+  is_live?: boolean;
+  expires_at?: string;
+}) {
+  return apiFetch<Message>(`/chat/channels/${channelId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({
+      type: 'location',
+      content: data.title || 'Standort',
+      metadata: {
+        location: data,
+      },
+    }),
+  });
+}

@@ -2,22 +2,42 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Modal, Pressable, StyleSheet, Platform } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Icon, type IconName } from '../../components/Icon';
 import { useChatStore } from '../../store/chat';
 import { useThemeStore } from '../../store/theme';
 import { fetchProfile } from '../../lib/profile';
 import type { Profile } from '../../types/profile';
 import OnboardingWizard from '../../components/onboarding/OnboardingWizard';
-import NotificationBell from '../../components/notifications/NotificationBell';
+import UserMenu from '../../components/layout/UserMenu';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
 
 function TabBarIcon({ name, color }: { name: IconName; color: string }) {
-  return <Icon name={name} size={20} color={color} />;
+  return <Icon name={name} size={24} color={color} />;
 }
 
+/** Enso Logo fuer den Header (28px, Gold-Gradient) */
+function EnsoLogo() {
+  return (
+    <Svg width={28} height={28} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id="header-enso" x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor="#A8894E" />
+          <Stop offset="100%" stopColor="#D4BC8B" />
+        </LinearGradient>
+      </Defs>
+      <Circle
+        cx="50" cy="50" r="36" fill="none"
+        stroke="url(#header-enso)" strokeWidth={9} strokeLinecap="round"
+        strokeDasharray="196 30" strokeDashoffset="15"
+      />
+    </Svg>
+  );
+}
+
+// Profil entfernt — Zugang ueber UserMenu EnsoRing oben rechts
 const BASE_mehrItems: { route: string; icon: IconName; label: string; mentorOnly?: boolean }[] = [
-  { route: '/profile', icon: 'user', label: 'Profil' },
   { route: '/studio', icon: 'layout-dashboard', label: 'Studio', mentorOnly: true },
-  { route: '/analytics', icon: 'chart-bar', label: 'Analytics' },
 ];
 
 export default function TabsLayout() {
@@ -31,11 +51,13 @@ export default function TabsLayout() {
   const [showWizard, setShowWizard] = useState(false);
   const router = useRouter();
 
+  // Push Notifications registrieren sobald Profil geladen
+  usePushNotifications(profile?.id);
+
   const loadProfile = useCallback(() => {
     fetchProfile().then((p) => {
       setProfile(p);
       if ((p as { is_mentor?: boolean }).is_mentor) setIsMentor(true);
-      // Zeige Onboarding-Wizard wenn Soul Level 1
       setShowWizard(p.soul_level === 1);
     }).catch(() => {});
   }, []);
@@ -46,7 +68,6 @@ export default function TabsLayout() {
 
   const handleLevelUp = useCallback(() => {
     setShowWizard(false);
-    // Profil neu laden fuer aktuellen Soul Level
     loadProfile();
   }, [loadProfile]);
 
@@ -79,25 +100,31 @@ export default function TabsLayout() {
             fontSize: 17,
             color: colors.textH,
           },
+          headerLeft: () => (
+            <View style={{ marginLeft: 14 }}>
+              <EnsoLogo />
+            </View>
+          ),
           headerRight: () => (
             <View style={{ marginRight: 12 }}>
-              <NotificationBell />
+              <UserMenu />
             </View>
           ),
           tabBarStyle: {
             backgroundColor: colors.tabBarBg,
             borderTopColor: colors.tabBarBorder,
             borderTopWidth: 1,
-            paddingBottom: 8,
-            height: 64,
+            paddingBottom: 14,
+            paddingTop: 6,
+            height: 82,
           },
           tabBarActiveTintColor: colors.tabBarActive,
           tabBarInactiveTintColor: colors.tabBarInactive,
           tabBarLabelStyle: {
-            fontSize: 9,
-            letterSpacing: 2,
+            fontSize: 11,
+            letterSpacing: 1.5,
             textTransform: 'uppercase',
-            marginTop: -4,
+            marginTop: 2,
           },
         }}
       >

@@ -8,6 +8,14 @@ import {
 } from 'react-native-webrtc';
 import { supabase } from '../lib/supabase';
 
+// InCallManager fuer Lautsprecher-Steuerung (optional, nur in Dev-Build)
+let InCallManager: any = null;
+try {
+  InCallManager = require('react-native-incall-manager').default;
+} catch {
+  // Nicht verfuegbar (z.B. Expo Go)
+}
+
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
@@ -30,6 +38,7 @@ export function useWebRTC({ roomId, isCaller, video = false, onEnded }: UseWebRT
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(video); // Video-Calls starten mit Lautsprecher
   const [duration, setDuration] = useState(0);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -53,6 +62,10 @@ export function useWebRTC({ roomId, isCaller, video = false, onEnded }: UseWebRT
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
+    }
+    // InCallManager stoppen
+    if (InCallManager) {
+      try { InCallManager.stop(); } catch {}
     }
   }, [localStream]);
 
@@ -92,6 +105,17 @@ export function useWebRTC({ roomId, isCaller, video = false, onEnded }: UseWebRT
     }
   }, [localStream]);
 
+  // ── Toggle Speaker ──
+  const toggleSpeaker = useCallback(() => {
+    if (InCallManager) {
+      const newState = !isSpeakerOn;
+      try {
+        InCallManager.setForceSpeakerphoneOn(newState);
+      } catch {}
+      setIsSpeakerOn(newState);
+    }
+  }, [isSpeakerOn]);
+
   // ── Start ──
   useEffect(() => {
     if (!roomId) return;
@@ -101,6 +125,14 @@ export function useWebRTC({ roomId, isCaller, video = false, onEnded }: UseWebRT
     const start = async () => {
       try {
         setState('connecting');
+
+        // InCallManager starten (Lautsprecher fuer Video, Hoerer fuer Audio)
+        if (InCallManager) {
+          try {
+            InCallManager.start({ media: video ? 'video' : 'audio' });
+            InCallManager.setForceSpeakerphoneOn(video);
+          } catch {}
+        }
 
         // Media
         const stream = await mediaDevices.getUserMedia({
@@ -268,9 +300,11 @@ export function useWebRTC({ roomId, isCaller, video = false, onEnded }: UseWebRT
     remoteStream,
     isMuted,
     isVideoOff,
+    isSpeakerOn,
     duration,
     toggleMute,
     toggleVideo,
+    toggleSpeaker,
     endCall,
   };
 }

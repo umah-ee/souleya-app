@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth';
 import { useChatStore } from '../../store/chat';
 import { useThemeStore } from '../../store/theme';
@@ -31,7 +32,11 @@ import GroupInfoSheet from '../../components/chat/GroupInfoSheet';
 import ImageGrid from '../../components/shared/ImageGrid';
 import ChallengeCard from '../../components/challenges/ChallengeCard';
 import CreateChallengeModal from '../../components/challenges/CreateChallengeModal';
+import LinkPreviewCard from '../../components/chat/LinkPreviewCard';
+import LocationShareCard from '../../components/chat/LocationShareCard';
 import { fetchChallenge } from '../../lib/challenges';
+import { sendLocation } from '../../lib/chat';
+import * as Location from 'expo-location';
 import type { Challenge } from '../../types/challenges';
 
 // Haeufig verwendete Emojis fuer den Reaktions-Picker
@@ -48,6 +53,7 @@ export default function ChatRoomScreen() {
   const userId = session?.user?.id;
   const { startCall } = useCall();
   const voiceRecorder = useVoiceRecorder(userId ?? '');
+  const insets = useSafeAreaInsets();
 
   const [channel, setChannel] = useState<ChannelDetail | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -65,11 +71,13 @@ export default function ChatRoomScreen() {
   const [emojiPickerMsg, setEmojiPickerMsg] = useState<Message | null>(null);
   const [reactions, setReactions] = useState<ReactionsMap>({});
 
-  // Neue Features: Polls, Seeds, Images, GroupInfo
+  // Neue Features: Polls, Seeds, Images, GroupInfo, Location
   const [showPollForm, setShowPollForm] = useState(false);
   const [showSeedsModal, setShowSeedsModal] = useState(false);
   const [showChallengeModal, setShowChallengeModal] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [sendingLocation, setSendingLocation] = useState(false);
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
@@ -303,7 +311,10 @@ export default function ChatRoomScreen() {
         content,
         reply_to: replyTo?.id,
       });
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
       setText('');
       setReplyTo(null);
     } catch (e) {
@@ -460,6 +471,33 @@ export default function ChatRoomScreen() {
     });
   };
 
+  // ── Standort senden ──────────────────────────────────────
+  const handleSendLocation = async (isLive = false) => {
+    if (!channelId || sendingLocation) return;
+    setSendingLocation(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') { setSendingLocation(false); return; }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const [place] = await Location.reverseGeocodeAsync({ latitude: loc.coords.latitude, longitude: loc.coords.longitude }).catch(() => [null as any]);
+      const title = place ? [place.street, place.city].filter(Boolean).join(', ') : 'Mein Standort';
+      const subtitle = place ? [place.city, place.country].filter(Boolean).join(', ') : undefined;
+      await sendLocation(channelId, {
+        lat: loc.coords.latitude,
+        lng: loc.coords.longitude,
+        title,
+        subtitle,
+        is_live: isLive,
+        expires_at: isLive ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : undefined,
+      });
+    } catch (e) {
+      console.error('Standort senden fehlgeschlagen:', e);
+    } finally {
+      setSendingLocation(false);
+      setShowLocationModal(false);
+    }
+  };
+
   // ── Seeds gesendet ────────────────────────────────────────
   const handleSeedsSent = () => {
     setShowSeedsModal(false);
@@ -570,9 +608,13 @@ export default function ChatRoomScreen() {
 
     // System-Nachricht
     if (msg.type === 'system') {
+      // NaN-Werte in Anruf-Nachrichten bereinigen
+      let displayContent = msg.content ?? '';
+      displayContent = displayContent.replace(/NaN:NaN/g, '0:00').replace(/NaN/g, '0');
+
       return (
         <View style={styles.systemRow}>
-          <Text style={styles.systemText}>{msg.content}</Text>
+          <Text style={styles.systemText}>{displayContent}</Text>
         </View>
       );
     }
@@ -619,6 +661,27 @@ export default function ChatRoomScreen() {
             {showAuthor && <Text style={styles.bubbleAuthor}>{authorName}</Text>}
             <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
               <InlineChallengeEmbed challengeId={String(msg.metadata.challenge_id)} />
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // Location-Nachricht
+    if (msg.type === 'location') {
+      const loc = (msg.metadata?.location as any) ?? {};
+      return (
+        <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
+          <View style={{ maxWidth: '75%' }}>
+            {showAuthor && <Text style={styles.bubbleAuthor}>{authorName}</Text>}
+            <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther, { padding: 4 }]}>
+              <LocationShareCard location={loc} />
+              <View style={[styles.bubbleMeta, isOwn && { alignSelf: 'flex-end' }, { marginTop: 4, paddingHorizontal: 6 }]}>
+                <Text style={styles.bubbleTime}>
+                  {new Date(msg.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+                {isOwn && <ReadReceipt msgCreatedAt={msg.created_at} readStatus={readStatus} userId={userId!} />}
+              </View>
             </View>
           </View>
         </View>
@@ -722,6 +785,10 @@ export default function ChatRoomScreen() {
             onLongPress={() => setActionMsg(msg)}
           >
             <MarkdownText text={msg.content ?? ''} />
+            {/* Link Preview (OpenGraph) */}
+            {!!(msg.metadata as any)?.link_preview && (
+              <LinkPreviewCard preview={(msg.metadata as any).link_preview} />
+            )}
             <View style={[styles.bubbleMeta, isOwn && { alignSelf: 'flex-end' }]}>
               {msg.edited_at && <Text style={styles.bubbleEdited}>bearbeitet</Text>}
               <Text style={styles.bubbleTime}>
@@ -847,14 +914,14 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 56 : 0}
       >
         <FlatList
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
           renderItem={renderMessage}
-          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8 }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: 12, paddingVertical: 8 }}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
           onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
           onScroll={(e) => {
@@ -943,42 +1010,62 @@ export default function ChatRoomScreen() {
         {/* Typing Indicator */}
         <TypingIndicator users={typingUsers} channel={channel} />
 
+        {/* Aktions-Leiste (ausklappbar via + Button) */}
+        {showLocationModal && (
+          <View style={[styles.actionsBar, { borderTopColor: colors.dividerL, backgroundColor: colors.bgSolid }]}>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowLocationModal(false); setShowPollForm(true); }} activeOpacity={0.7}>
+              <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
+                <Icon name="chart-bar" size={22} color={colors.gold} />
+              </View>
+              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Umfrage</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowLocationModal(false); setShowSeedsModal(true); }} activeOpacity={0.7}>
+              <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
+                <Icon name="seedling" size={22} color={colors.gold} />
+              </View>
+              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Seeds</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowLocationModal(false); setShowChallengeModal(true); }} activeOpacity={0.7}>
+              <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
+                <Icon name="target" size={22} color={colors.gold} />
+              </View>
+              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Challenge</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => handleSendLocation(false)} activeOpacity={0.7}>
+              <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
+                <Icon name="map-pin" size={22} color={colors.gold} />
+              </View>
+              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>
+                {sendingLocation ? 'Senden …' : 'Standort'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => handleSendLocation(true)} activeOpacity={0.7}>
+              <View style={[styles.actionBarIcon, { backgroundColor: 'rgba(34,197,94,0.12)' }]}>
+                <Icon name="current-location" size={22} color="#22C55E" />
+              </View>
+              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Live</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Input */}
         <View style={[styles.inputRow, { borderTopColor: colors.dividerL }]}>
           {/* Photo Button */}
           <TouchableOpacity
-            style={styles.actionBtn}
+            style={styles.inputActionBtn}
             onPress={handlePickImage}
             activeOpacity={0.7}
           >
-            <Icon name="photo" size={18} color={colors.textMuted} />
+            <Icon name="photo" size={22} color={colors.textMuted} />
           </TouchableOpacity>
 
-          {/* Poll Button */}
+          {/* Mehr-Aktionen Button (+) — oeffnet Aktions-Zeile */}
           <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => setShowPollForm(true)}
+            style={styles.inputActionBtn}
+            onPress={() => setShowLocationModal((prev) => !prev)}
             activeOpacity={0.7}
           >
-            <Icon name="chart-bar" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          {/* Seeds Button */}
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => setShowSeedsModal(true)}
-            activeOpacity={0.7}
-          >
-            <Icon name="seedling" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          {/* Challenge Button */}
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => setShowChallengeModal(true)}
-            activeOpacity={0.7}
-          >
-            <Icon name="target" size={18} color={colors.textMuted} />
+            <Icon name="plus" size={22} color={showLocationModal ? colors.gold : colors.textMuted} />
           </TouchableOpacity>
 
           <TextInput
@@ -1103,44 +1190,52 @@ export default function ChatRoomScreen() {
 
       {/* Search Modal */}
       <Modal visible={showSearch} transparent animationType="slide" onRequestClose={() => setShowSearch(false)}>
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.bgSolid }]}>
-          <View style={[styles.header, { borderBottomColor: colors.dividerL }]}>
-            <TouchableOpacity onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }} style={{ padding: 4 }}>
-              <Icon name="arrow-left" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
-            <TextInput
-              style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Nachrichten durchsuchen …"
-              placeholderTextColor={colors.textMuted}
-              returnKeyType="search"
-              onSubmitEditing={handleSearch}
-              autoFocus
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.bgSolid }]} edges={['top', 'bottom']}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+          >
+            {/* Ergebnisse oben */}
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end', padding: 12 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.dividerL }}
+                  onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }}
+                >
+                  <Text style={{ fontSize: 11, color: colors.gold, marginBottom: 2 }}>
+                    {item.author?.display_name ?? 'Anonym'} · {new Date(item.created_at).toLocaleDateString('de-DE')}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: colors.text }} numberOfLines={3}>{item.content}</Text>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                searchQuery.trim() && !searching ? (
+                  <Text style={{ textAlign: 'center', color: colors.textMuted, marginTop: 40 }}>Keine Ergebnisse</Text>
+                ) : null
+              }
             />
-            {searching && <ActivityIndicator size="small" color={colors.gold} />}
-          </View>
-          <FlatList
-            data={searchResults}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ padding: 12 }}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.dividerL }}
-                onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }}
-              >
-                <Text style={{ fontSize: 11, color: colors.gold, marginBottom: 2 }}>
-                  {item.author?.display_name ?? 'Anonym'} · {new Date(item.created_at).toLocaleDateString('de-DE')}
-                </Text>
-                <Text style={{ fontSize: 14, color: colors.text }} numberOfLines={3}>{item.content}</Text>
+            {/* Suchleiste unten (direkt ueber Tastatur) */}
+            <View style={[styles.searchBar, { borderTopColor: colors.dividerL, backgroundColor: colors.bgSolid }]}>
+              <TouchableOpacity onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }} style={{ padding: 8 }}>
+                <Icon name="arrow-left" size={20} color={colors.textMuted} />
               </TouchableOpacity>
-            )}
-            ListEmptyComponent={
-              searchQuery.trim() && !searching ? (
-                <Text style={{ textAlign: 'center', color: colors.textMuted, marginTop: 40 }}>Keine Ergebnisse</Text>
-              ) : null
-            }
-          />
+              <TextInput
+                style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Nachrichten durchsuchen …"
+                placeholderTextColor={colors.textMuted}
+                returnKeyType="search"
+                onSubmitEditing={handleSearch}
+                autoFocus
+              />
+              {searching && <ActivityIndicator size="small" color={colors.gold} />}
+            </View>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
 
@@ -1478,14 +1573,36 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
+  // Actions Bar (ausklappbar)
+  actionsBar: {
+    flexDirection: 'row', justifyContent: 'space-around',
+    paddingVertical: 12, paddingHorizontal: 8,
+    borderTopWidth: 1,
+  },
+  actionBarItem: {
+    alignItems: 'center', gap: 6, paddingHorizontal: 6,
+    minWidth: 56,
+  },
+  actionBarIcon: {
+    width: 48, height: 48, borderRadius: 24,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  actionBarLabel: {
+    fontSize: 11, letterSpacing: 0.3, fontWeight: '500',
+  },
+
   // Input
   inputRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 8, paddingVertical: 10,
     borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.06)',
   },
   actionBtn: {
     width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  inputActionBtn: {
+    width: 44, height: 44, borderRadius: 22,
     alignItems: 'center', justifyContent: 'center',
   },
   input: {
@@ -1495,11 +1612,18 @@ const styles = StyleSheet.create({
     borderRadius: 8, color: '#F0EDE8', fontSize: 14,
   },
   sendBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 44, height: 44, borderRadius: 22,
     backgroundColor: '#C8A96E',
     alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: 'rgba(200,169,110,0.15)' },
+
+  // Search Bar (unten im Search Modal)
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 10, paddingVertical: 10,
+    borderTopWidth: 1,
+  },
 
   // Action Sheet
   sheetOverlay: {

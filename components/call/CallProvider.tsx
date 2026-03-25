@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 import { supabase } from '../../lib/supabase';
 import { apiFetch } from '../../lib/api';
 import { useAuthStore } from '../../store/auth';
+import { fetchProfile } from '../../lib/profile';
 import VideoCallOverlay from './VideoCallOverlay';
 import IncomingCallOverlay from './IncomingCallOverlay';
 
@@ -43,7 +44,16 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const [outgoing, setOutgoing] = useState<CallInfo | null>(null);
   const [incoming, setIncoming] = useState<(CallInfo & { callerId: string })| null>(null);
   const [activeCall, setActiveCall] = useState<(CallInfo & { isCaller: boolean }) | null>(null);
+  const [myDisplayName, setMyDisplayName] = useState('Jemand');
   const endingRef = useRef(false);
+
+  // Eigenen Display-Name laden fuer Anruf-Anzeige beim Gegenueber
+  useEffect(() => {
+    if (!userId) return;
+    fetchProfile()
+      .then((p) => setMyDisplayName(p.display_name || p.username || 'Jemand'))
+      .catch(() => {});
+  }, [userId]);
 
   // ── Inbox Channel (listen for incoming calls) ──
   useEffect(() => {
@@ -104,7 +114,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
             roomId,
             channelId,
             callerId: userId,
-            callerName: 'Du',
+            callerName: myDisplayName,
             callerAvatar: null,
             isVideo: video,
           },

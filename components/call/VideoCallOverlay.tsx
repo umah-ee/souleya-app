@@ -33,8 +33,8 @@ export default function VideoCallOverlay({
   const insets = useSafeAreaInsets();
 
   const {
-    state, localStream, remoteStream, isMuted, isVideoOff, duration,
-    toggleMute, toggleVideo, endCall,
+    state, localStream, remoteStream, isMuted, isVideoOff, isSpeakerOn, duration,
+    toggleMute, toggleVideo, toggleSpeaker, endCall,
   } = useWebRTC({
     roomId,
     isCaller,
@@ -126,6 +126,15 @@ export default function VideoCallOverlay({
             {isVideoOff && <View style={styles.strikethrough} />}
           </TouchableOpacity>
         )}
+
+        {/* Speaker Toggle */}
+        <TouchableOpacity
+          style={[styles.controlBtn, isSpeakerOn && { backgroundColor: 'rgba(255,255,255,0.3)' }]}
+          onPress={toggleSpeaker}
+          activeOpacity={0.7}
+        >
+          <Icon name={isSpeakerOn ? 'volume' : 'volume-off'} size={22} color="#FFF" />
+        </TouchableOpacity>
 
         {/* End Call */}
         <TouchableOpacity
