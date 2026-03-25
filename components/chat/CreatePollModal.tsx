@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Switch,
   Modal, Pressable, ScrollView, ActivityIndicator, StyleSheet,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import type { Message } from '../../types/chat';
 import { createPoll } from '../../lib/chat';
@@ -66,7 +67,11 @@ export default function CreatePollModal({ visible, channelId, onCreated, onClose
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <Pressable style={styles.overlay} onPress={handleClose}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Pressable style={{ flex: 1 }} onPress={handleClose} />
         <Pressable style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
@@ -152,7 +157,7 @@ export default function CreatePollModal({ visible, channelId, onCreated, onClose
             </TouchableOpacity>
           </View>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

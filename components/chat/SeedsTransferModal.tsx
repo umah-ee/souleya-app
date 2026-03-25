@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   Modal, Pressable, ScrollView, Image, ActivityIndicator, StyleSheet,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import type { ChannelMember } from '../../types/chat';
 import { transferSeeds } from '../../lib/chat';
@@ -69,7 +70,11 @@ export default function SeedsTransferModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <Pressable style={styles.overlay} onPress={handleClose}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Pressable style={{ flex: 1 }} onPress={handleClose} />
         <Pressable style={styles.content}>
           {/* Header */}
           <View style={styles.header}>
@@ -179,7 +184,7 @@ export default function SeedsTransferModal({
             </TouchableOpacity>
           </View>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

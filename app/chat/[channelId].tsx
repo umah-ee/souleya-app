@@ -905,6 +905,47 @@ export default function ChatRoomScreen() {
         )}
       </View>
 
+      {/* Inline Search Panel (unter Header, Chat bleibt sichtbar) */}
+      {showSearch && (
+        <View style={{ backgroundColor: colors.bgSolid, borderBottomWidth: 1, borderBottomColor: colors.dividerL }}>
+          <View style={[styles.searchBar, { borderTopColor: 'transparent', backgroundColor: colors.bgSolid }]}>
+            <TouchableOpacity onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }} style={{ padding: 8 }}>
+              <Icon name="arrow-left" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+            <TextInput
+              style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Nachrichten durchsuchen …"
+              placeholderTextColor={colors.textMuted}
+              returnKeyType="search"
+              onSubmitEditing={handleSearch}
+              autoFocus
+            />
+            {searching && <ActivityIndicator size="small" color={colors.gold} />}
+          </View>
+          {searchResults.length > 0 && (
+            <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
+              {searchResults.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={{ paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.dividerL }}
+                  onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }}
+                >
+                  <Text style={{ fontSize: 11, color: colors.gold, marginBottom: 2 }}>
+                    {item.author?.display_name ?? 'Anonym'} · {new Date(item.created_at).toLocaleDateString('de-DE')}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: colors.text }} numberOfLines={3}>{item.content}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+          {searchQuery.trim() && !searching && searchResults.length === 0 && (
+            <Text style={{ textAlign: 'center', color: colors.textMuted, paddingVertical: 16 }}>Keine Ergebnisse</Text>
+          )}
+        </View>
+      )}
+
       {/* Messages */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -1180,56 +1221,7 @@ export default function ChatRoomScreen() {
         />
       )}
 
-      {/* Search Modal */}
-      <Modal visible={showSearch} transparent animationType="slide" onRequestClose={() => setShowSearch(false)}>
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.bgSolid }]} edges={['top', 'bottom']}>
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
-          >
-            {/* Ergebnisse oben */}
-            <FlatList
-              data={searchResults}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end', padding: 12 }}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.dividerL }}
-                  onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }}
-                >
-                  <Text style={{ fontSize: 11, color: colors.gold, marginBottom: 2 }}>
-                    {item.author?.display_name ?? 'Anonym'} · {new Date(item.created_at).toLocaleDateString('de-DE')}
-                  </Text>
-                  <Text style={{ fontSize: 14, color: colors.text }} numberOfLines={3}>{item.content}</Text>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                searchQuery.trim() && !searching ? (
-                  <Text style={{ textAlign: 'center', color: colors.textMuted, marginTop: 40 }}>Keine Ergebnisse</Text>
-                ) : null
-              }
-            />
-            {/* Suchleiste unten (direkt ueber Tastatur) */}
-            <View style={[styles.searchBar, { borderTopColor: colors.dividerL, backgroundColor: colors.bgSolid }]}>
-              <TouchableOpacity onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }} style={{ padding: 8 }}>
-                <Icon name="arrow-left" size={20} color={colors.textMuted} />
-              </TouchableOpacity>
-              <TextInput
-                style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="Nachrichten durchsuchen …"
-                placeholderTextColor={colors.textMuted}
-                returnKeyType="search"
-                onSubmitEditing={handleSearch}
-                autoFocus
-              />
-              {searching && <ActivityIndicator size="small" color={colors.gold} />}
-            </View>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
+      {/* Search wird jetzt inline gerendert (siehe searchInlinePanel im Header-Bereich) */}
 
       {/* Forward Modal */}
       <ForwardModal
