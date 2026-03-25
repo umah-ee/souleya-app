@@ -869,8 +869,8 @@ export default function ChatRoomScreen() {
                 onPress={() => startCall({
                   channelId: channelId!,
                   partnerId: partner.user_id,
-                  partnerName: partner.display_name || partner.username || 'Unbekannt',
-                  partnerAvatar: partner.avatar_url,
+                  partnerName: partner.profile?.display_name || partner.profile?.username || partner.display_name || partner.username || 'Unbekannt',
+                  partnerAvatar: partner.profile?.avatar_url || partner.avatar_url || null,
                   video: false,
                 })}
                 style={styles.headerBtn}
@@ -881,8 +881,8 @@ export default function ChatRoomScreen() {
                 onPress={() => startCall({
                   channelId: channelId!,
                   partnerId: partner.user_id,
-                  partnerName: partner.display_name || partner.username || 'Unbekannt',
-                  partnerAvatar: partner.avatar_url,
+                  partnerName: partner.profile?.display_name || partner.profile?.username || partner.display_name || partner.username || 'Unbekannt',
+                  partnerAvatar: partner.profile?.avatar_url || partner.avatar_url || null,
                   video: true,
                 })}
                 style={styles.headerBtn}
@@ -894,7 +894,7 @@ export default function ChatRoomScreen() {
         })()}
 
         {/* Search Button */}
-        <TouchableOpacity onPress={() => setShowSearch(true)} style={styles.headerBtn}>
+        <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowLocationModal(false); setTimeout(() => setShowSearch(true), 100); }} style={styles.headerBtn}>
           <Icon name="search" size={22} color={colors.textMuted} />
         </TouchableOpacity>
 
@@ -950,7 +950,7 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 56 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 10 : 0}
       >
         <FlatList
           ref={flatListRef}
@@ -1046,8 +1046,8 @@ export default function ChatRoomScreen() {
         {/* Typing Indicator */}
         <TypingIndicator users={typingUsers} channel={channel} />
 
-        {/* Aktions-Leiste (ausklappbar via + Button) */}
-        {showLocationModal && (
+        {/* Aktions-Leiste (ausklappbar via + Button) — nur wenn Suche nicht aktiv */}
+        {showLocationModal && !showSearch && (
           <View style={[styles.actionsBar, { borderTopColor: colors.dividerL, backgroundColor: colors.bgSolid }]}>
             <TouchableOpacity style={styles.actionBarItem} onPress={handlePickImage} activeOpacity={0.7}>
               <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
@@ -1055,19 +1055,19 @@ export default function ChatRoomScreen() {
               </View>
               <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Fotos</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowPollForm(true), 100); }} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setShowLocationModal(false); setTimeout(() => setShowPollForm(true), 300); }} activeOpacity={0.7}>
               <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
                 <Icon name="chart-bar" size={22} color={colors.gold} />
               </View>
               <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Umfrage</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowSeedsModal(true), 100); }} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setShowLocationModal(false); setTimeout(() => setShowSeedsModal(true), 300); }} activeOpacity={0.7}>
               <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
                 <Icon name="seedling" size={22} color={colors.gold} />
               </View>
               <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Seeds</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowChallengeModal(true), 100); }} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setShowLocationModal(false); setTimeout(() => setShowChallengeModal(true), 300); }} activeOpacity={0.7}>
               <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
                 <Icon name="target" size={22} color={colors.gold} />
               </View>
@@ -1090,7 +1090,8 @@ export default function ChatRoomScreen() {
           </View>
         )}
 
-        {/* Input */}
+        {/* Input — nur wenn Suche nicht aktiv */}
+        {!showSearch && (
         <View style={[styles.inputRow, { borderTopColor: colors.dividerL }]}>
           {/* Mehr-Aktionen Button (+) — oeffnet Aktions-Zeile */}
           <TouchableOpacity
@@ -1102,7 +1103,7 @@ export default function ChatRoomScreen() {
           </TouchableOpacity>
 
           <TextInput
-            style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
+            style={[styles.input, { flex: 1, backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textH }]}
             value={text}
             onChangeText={(t) => { setText(t); sendTyping(); }}
             placeholder={editingMsg ? 'Nachricht bearbeiten ...' : 'Nachricht schreiben ...'}
@@ -1156,6 +1157,7 @@ export default function ChatRoomScreen() {
             </TouchableOpacity>
           )}
         </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* Action Sheet Modal */}
@@ -1581,8 +1583,8 @@ const styles = StyleSheet.create({
 
   // Input
   inputRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 8, paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10,
     borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.06)',
   },
   actionBtn: {

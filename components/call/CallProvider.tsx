@@ -45,13 +45,17 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const [incoming, setIncoming] = useState<(CallInfo & { callerId: string })| null>(null);
   const [activeCall, setActiveCall] = useState<(CallInfo & { isCaller: boolean }) | null>(null);
   const [myDisplayName, setMyDisplayName] = useState('Jemand');
+  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
   const endingRef = useRef(false);
 
-  // Eigenen Display-Name laden fuer Anruf-Anzeige beim Gegenueber
+  // Eigenen Display-Name + Avatar laden fuer Anruf-Anzeige beim Gegenueber
   useEffect(() => {
     if (!userId) return;
     fetchProfile()
-      .then((p) => setMyDisplayName(p.display_name || p.username || 'Jemand'))
+      .then((p) => {
+        setMyDisplayName(p.display_name || p.username || 'Jemand');
+        setMyAvatarUrl(p.avatar_url || null);
+      })
       .catch(() => {});
   }, [userId]);
 
@@ -115,7 +119,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
             channelId,
             callerId: userId,
             callerName: myDisplayName,
-            callerAvatar: null,
+            callerAvatar: myAvatarUrl,
             isVideo: video,
           },
         });

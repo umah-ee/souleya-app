@@ -25,15 +25,25 @@ interface Props {
 export default function LocationShareCard({ location, onPress }: Props) {
   const colors = useThemeStore((s) => s.colors);
   const [isExpired, setIsExpired] = useState(false);
+  const [remainingText, setRemainingText] = useState('');
 
-  // Live-Standort Ablauf pruefen
+  // Live-Standort Ablauf pruefen + Countdown
   useEffect(() => {
     if (!location.is_live || !location.expires_at) return;
-    const check = () => {
-      setIsExpired(new Date(location.expires_at!).getTime() < Date.now());
+    const update = () => {
+      const remaining = new Date(location.expires_at!).getTime() - Date.now();
+      if (remaining <= 0) {
+        setIsExpired(true);
+        setRemainingText('');
+      } else {
+        setIsExpired(false);
+        const mins = Math.floor(remaining / 60000);
+        const secs = Math.floor((remaining % 60000) / 1000);
+        setRemainingText(mins > 0 ? `noch ${mins} Min` : `noch ${secs} Sek`);
+      }
     };
-    check();
-    const interval = setInterval(check, 10000); // alle 10s pruefen
+    update();
+    const interval = setInterval(update, 10000); // alle 10s pruefen
     return () => clearInterval(interval);
   }, [location.is_live, location.expires_at]);
 
@@ -82,6 +92,9 @@ export default function LocationShareCard({ location, onPress }: Props) {
             <View style={[styles.liveBadge, { backgroundColor: '#22C55E' }]}>
               <Text style={styles.liveBadgeText}>LIVE</Text>
             </View>
+          )}
+          {location.is_live && !isExpired && remainingText !== '' && (
+            <Text style={[styles.expiryText, { color: '#22C55E' }]}>{remainingText}</Text>
           )}
           {location.is_live && isExpired && (
             <View style={[styles.liveBadge, { backgroundColor: colors.textMuted }]}>
@@ -149,6 +162,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
     letterSpacing: 1,
+  },
+  expiryText: {
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
   title: {
     fontSize: 13,

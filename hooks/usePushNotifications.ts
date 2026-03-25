@@ -23,6 +23,19 @@ try {
   // Nicht verfuegbar (z.B. Web oder Expo Go ohne native Module)
 }
 
+// Foreground Notification Handler — muss VOR dem Hook aufgerufen werden (Module-Level)
+if (Notifications) {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch {}
+}
+
 export function usePushNotifications(userId: string | undefined) {
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const notificationListener = useRef<any>(null);
