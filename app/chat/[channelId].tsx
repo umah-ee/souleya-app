@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, Image, TextInput, KeyboardAvoidingView,
-  Platform, ActivityIndicator, Modal, Pressable, ScrollView,
+  Platform, ActivityIndicator, Modal, Pressable, ScrollView, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -833,8 +833,8 @@ export default function ChatRoomScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgSolid }]} edges={['top']}>
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.dividerL }]}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}>
-          <Icon name="arrow-left" size={20} color={colors.textMuted} />
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
+          <Icon name="arrow-left" size={22} color={colors.textMuted} />
         </TouchableOpacity>
 
         <View style={[styles.headerAvatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }]}>
@@ -864,7 +864,7 @@ export default function ChatRoomScreen() {
         {channel?.type === 'direct' && (() => {
           const partner = channel.members.find((m: any) => m.user_id !== userId);
           return partner ? (
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <>
               <TouchableOpacity
                 onPress={() => startCall({
                   channelId: channelId!,
@@ -873,9 +873,9 @@ export default function ChatRoomScreen() {
                   partnerAvatar: partner.avatar_url,
                   video: false,
                 })}
-                style={{ padding: 4 }}
+                style={styles.headerBtn}
               >
-                <Icon name="microphone" size={18} color={colors.textMuted} />
+                <Icon name="phone" size={22} color={colors.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => startCall({
@@ -885,27 +885,22 @@ export default function ChatRoomScreen() {
                   partnerAvatar: partner.avatar_url,
                   video: true,
                 })}
-                style={{ padding: 4 }}
+                style={styles.headerBtn}
               >
-                <Icon name="video" size={18} color={colors.textMuted} />
+                <Icon name="video" size={22} color={colors.textMuted} />
               </TouchableOpacity>
-            </View>
+            </>
           ) : null;
         })()}
 
         {/* Search Button */}
-        <TouchableOpacity onPress={() => setShowSearch(true)} style={{ padding: 4 }}>
-          <Icon name="search" size={18} color={colors.textMuted} />
-        </TouchableOpacity>
-
-        {/* Mute Button */}
-        <TouchableOpacity onPress={handleToggleMute} style={{ padding: 4 }}>
-          <Icon name={isMuted ? 'bell-off' : 'bell'} size={18} color={isMuted ? '#E53E3E' : colors.textMuted} />
+        <TouchableOpacity onPress={() => setShowSearch(true)} style={styles.headerBtn}>
+          <Icon name="search" size={22} color={colors.textMuted} />
         </TouchableOpacity>
 
         {isGroupChannel && (
-          <TouchableOpacity onPress={() => setShowGroupInfo(true)} style={{ padding: 4 }}>
-            <Icon name="info" size={18} color={colors.textMuted} />
+          <TouchableOpacity onPress={() => setShowGroupInfo(true)} style={styles.headerBtn}>
+            <Icon name="info" size={22} color={colors.textMuted} />
           </TouchableOpacity>
         )}
       </View>
@@ -1013,19 +1008,25 @@ export default function ChatRoomScreen() {
         {/* Aktions-Leiste (ausklappbar via + Button) */}
         {showLocationModal && (
           <View style={[styles.actionsBar, { borderTopColor: colors.dividerL, backgroundColor: colors.bgSolid }]}>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowLocationModal(false); setShowPollForm(true); }} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.actionBarItem} onPress={handlePickImage} activeOpacity={0.7}>
+              <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
+                <Icon name="photo" size={22} color={colors.gold} />
+              </View>
+              <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Fotos</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowPollForm(true), 100); }} activeOpacity={0.7}>
               <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
                 <Icon name="chart-bar" size={22} color={colors.gold} />
               </View>
               <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Umfrage</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowLocationModal(false); setShowSeedsModal(true); }} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowSeedsModal(true), 100); }} activeOpacity={0.7}>
               <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
                 <Icon name="seedling" size={22} color={colors.gold} />
               </View>
               <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Seeds</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowLocationModal(false); setShowChallengeModal(true); }} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.actionBarItem} onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowChallengeModal(true), 100); }} activeOpacity={0.7}>
               <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
                 <Icon name="target" size={22} color={colors.gold} />
               </View>
@@ -1036,7 +1037,7 @@ export default function ChatRoomScreen() {
                 <Icon name="map-pin" size={22} color={colors.gold} />
               </View>
               <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>
-                {sendingLocation ? 'Senden …' : 'Standort'}
+                {sendingLocation ? '…' : 'Standort'}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionBarItem} onPress={() => handleSendLocation(true)} activeOpacity={0.7}>
@@ -1050,22 +1051,13 @@ export default function ChatRoomScreen() {
 
         {/* Input */}
         <View style={[styles.inputRow, { borderTopColor: colors.dividerL }]}>
-          {/* Photo Button */}
-          <TouchableOpacity
-            style={styles.inputActionBtn}
-            onPress={handlePickImage}
-            activeOpacity={0.7}
-          >
-            <Icon name="photo" size={22} color={colors.textMuted} />
-          </TouchableOpacity>
-
           {/* Mehr-Aktionen Button (+) — oeffnet Aktions-Zeile */}
           <TouchableOpacity
             style={styles.inputActionBtn}
             onPress={() => setShowLocationModal((prev) => !prev)}
             activeOpacity={0.7}
           >
-            <Icon name="plus" size={22} color={showLocationModal ? colors.gold : colors.textMuted} />
+            <Icon name="plus" size={24} color={showLocationModal ? colors.gold : colors.textMuted} />
           </TouchableOpacity>
 
           <TextInput
@@ -1449,9 +1441,13 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 12, paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 8, paddingVertical: 8,
     borderBottomWidth: 1, borderBottomColor: 'rgba(200,169,110,0.06)',
+  },
+  headerBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
   },
   headerAvatar: {
     width: 36, height: 36, borderRadius: 18,
