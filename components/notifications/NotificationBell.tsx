@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useThemeStore } from '../../store/theme';
+import { useNotificationStore } from '../../store/notifications';
 import { Icon } from '../Icon';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -51,6 +52,8 @@ function typeIcon(type: string): string {
     case 'chat_message': return 'send';
     case 'event_reminder': return 'calendar-event';
     case 'soul_level_up': return 'sparkles';
+    case 'incoming_call': return 'phone';
+    case 'missed_call': return 'phone-off';
     default: return 'bell';
   }
 }
@@ -68,21 +71,6 @@ function timeAgo(dateStr: string): string {
   } catch { return ''; }
 }
 
-// ── Notification Daten lazy laden ──
-// Store-Import wird lazy gemacht um moegliche Modul-Fehler zu isolieren
-
-let _notifStore: any = null;
-function getNotifStore() {
-  if (!_notifStore) {
-    try {
-      _notifStore = require('../../store/notifications').useNotificationStore;
-    } catch {
-      _notifStore = null;
-    }
-  }
-  return _notifStore;
-}
-
 // ── Inner Component ──
 
 function NotificationBellInner() {
@@ -90,17 +78,16 @@ function NotificationBellInner() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const prevCount = useRef(-1); // -1 = initialer Load, kein Pulse
+  const prevCount = useRef(-1);
   const initialLoadDone = useRef(false);
 
-  // Lazy-load notification store — wenn der Import fehlschlaegt, zeigen wir nur die Glocke
-  const store = getNotifStore();
-  const notifications: any[] = store ? store((s: any) => s.notifications) ?? [] : [];
-  const unreadCount: number = store ? store((s: any) => s.unreadCount) ?? 0 : 0;
-  const markRead = store ? store((s: any) => s.markRead) : undefined;
-  const markAllRead = store ? store((s: any) => s.markAllRead) : undefined;
-  const removeOne = store ? store((s: any) => s.removeOne) : undefined;
-  const removeRead = store ? store((s: any) => s.removeRead) : undefined;
+  // Direkter Import statt lazy require — zuverlaessiger fuer Badge-Updates
+  const notifications = useNotificationStore((s) => s.notifications) ?? [];
+  const unreadCount = useNotificationStore((s) => s.unreadCount) ?? 0;
+  const markRead = useNotificationStore((s) => s.markRead);
+  const markAllRead = useNotificationStore((s) => s.markAllRead);
+  const removeOne = useNotificationStore((s) => s.removeOne);
+  const removeRead = useNotificationStore((s) => s.removeRead);
 
   // Pulse animation — nur bei NEUEN Benachrichtigungen, nicht beim initialen Load
   useEffect(() => {

@@ -119,7 +119,6 @@ export default function CreateChallengeModal({ visible, onClose, onCreated, chan
               placeholder="z.B. 21 Tage Meditation"
               placeholderTextColor={colors.textMuted}
               maxLength={200}
-              autoFocus
             />
 
             {/* Beschreibung */}

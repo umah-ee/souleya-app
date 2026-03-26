@@ -951,7 +951,7 @@ export default function ChatRoomScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <FlatList
           ref={flatListRef}
@@ -1193,19 +1193,19 @@ export default function ChatRoomScreen() {
                 </View>
                 <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Fotos</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); setTimeout(() => setShowPollForm(true), 200); }} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); Keyboard.dismiss(); setTimeout(() => setShowPollForm(true), 400); }} activeOpacity={0.7}>
                 <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
                   <Icon name="chart-bar" size={22} color={colors.gold} />
                 </View>
                 <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Umfrage</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); setTimeout(() => setShowSeedsModal(true), 200); }} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); Keyboard.dismiss(); setTimeout(() => setShowSeedsModal(true), 400); }} activeOpacity={0.7}>
                 <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
                   <Icon name="seedling" size={22} color={colors.gold} />
                 </View>
                 <Text style={[styles.actionBarLabel, { color: colors.textMuted }]}>Seeds</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); setTimeout(() => setShowChallengeModal(true), 200); }} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.actionBarItem} onPress={() => { setShowActionsSheet(false); Keyboard.dismiss(); setTimeout(() => setShowChallengeModal(true), 400); }} activeOpacity={0.7}>
                 <View style={[styles.actionBarIcon, { backgroundColor: `${colors.gold}15` }]}>
                   <Icon name="target" size={22} color={colors.gold} />
                 </View>
@@ -1638,8 +1638,8 @@ const styles = StyleSheet.create({
 
   // Input
   inputRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 8, paddingVertical: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 14, paddingVertical: 6,
     borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.06)',
   },
   actionBtn: {

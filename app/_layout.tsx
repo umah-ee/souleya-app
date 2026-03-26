@@ -26,8 +26,6 @@ function RootLayoutNav() {
     }
   }, []);
 
-  // TODO: OneSignal Push Notifications – erst aktivieren wenn react-native-onesignal installiert ist
-
   useEffect(() => {
     // Check initial session
     supabase.auth.getSession()
