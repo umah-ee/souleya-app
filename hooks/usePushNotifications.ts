@@ -10,6 +10,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { apiFetch } from '../lib/api';
+import { useCall } from '../components/call/CallProvider';
 
 // Dynamischer Import – expo-notifications ist nur im Dev-Build verfuegbar
 let Notifications: any = null;
@@ -41,39 +42,46 @@ export function usePushNotifications(userId: string | undefined) {
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const notificationListener = useRef<any>(null);
   const responseListener = useRef<any>(null);
+  const registrationAttempted = useRef(false);
   const router = useRouter();
+  const { triggerIncomingCall } = useCall();
 
   useEffect(() => {
     if (!Notifications || !Device || !userId) return;
+    // Verhindere doppelte Registrierung
+    if (registrationAttempted.current) return;
+    registrationAttempted.current = true;
 
-    // Push Token registrieren
-    registerForPushNotifications().then((token) => {
-      if (token) {
-        console.log('[Push] Token erhalten:', token.substring(0, 30) + '...');
-        setExpoPushToken(token);
-        registerTokenOnServer(token)
-          .then(() => console.log('[Push] Token auf Server registriert'))
-          .catch((err) => {
-            console.error('[Push] Token-Registrierung fehlgeschlagen:', err);
-            // Retry nach 5s
-            setTimeout(() => {
-              registerTokenOnServer(token)
-                .then(() => console.log('[Push] Token auf Server registriert (retry)'))
-                .catch((err2) => console.error('[Push] Token-Registrierung fehlgeschlagen (retry):', err2));
-            }, 5000);
-          });
-      } else {
-        console.warn('[Push] Kein Token erhalten');
-      }
-    });
+    // Push Token registrieren (mit Verzoegerung fuer Auth-Stabilisierung)
+    console.log('[Push] === PUSH NOTIFICATION SETUP START ===');
+    console.log('[Push] userId:', userId);
+    console.log('[Push] Platform:', Platform.OS);
+    console.log('[Push] Notifications module:', !!Notifications);
+    console.log('[Push] Device module:', !!Device);
+    console.log('[Push] Constants module:', !!Constants);
+
+    const registerTimer = setTimeout(() => {
+      console.log('[Push] Starte Token-Registrierung nach 2s Delay...');
+      registerForPushNotifications().then((token) => {
+        if (token) {
+          console.log('[Push] Token erhalten:', token);
+          setExpoPushToken(token);
+
+          // Token auf Server registrieren mit Retry-Logik
+          registerTokenWithRetry(token, 3);
+        } else {
+          console.warn('[Push] KEIN TOKEN ERHALTEN - Push wird nicht funktionieren');
+        }
+      }).catch((err) => {
+        console.error('[Push] FATALER FEHLER bei Token-Registrierung:', err);
+      });
+    }, 2000); // 2s warten bis Auth-Session stabil
 
     // Eingehende Notification waehrend App offen
     notificationListener.current = Notifications.addNotificationReceivedListener(
       (notification: any) => {
         const data = notification?.request?.content?.data;
         console.log('[Push] Notification empfangen (foreground):', data?.type);
-        // In-App-Benachrichtigungen laufen ueber NotificationBell (Supabase Realtime).
-        // Fuer incoming_call: Store-Refresh ausloesen damit Badge aktualisiert wird
       },
     );
 
@@ -82,23 +90,33 @@ export function usePushNotifications(userId: string | undefined) {
       (response: any) => {
         const data = response.notification.request.content.data;
         console.log('[Push] Notification Tap:', data?.type, data?.link);
-        if (data?.link) {
-          router.push(data.link as any);
+
+        if (data?.type === 'incoming_call' && data?.room_id) {
+          // Anruf-Overlay direkt anzeigen — kein Supabase-Broadcast noetig
+          triggerIncomingCall({
+            roomId: data.room_id,
+            channelId: data.channel_id,
+            callerId: data.caller_id,
+            callerName: data.caller_name ?? 'Jemand',
+            callerAvatar: data.caller_avatar || null,
+            isVideo: data.is_video === 'true',
+          });
         } else if (data?.type === 'chat_message' && data?.channel_id) {
           router.push(`/chat/${data.channel_id}` as any);
-        } else if (data?.type === 'incoming_call' && data?.link) {
-          router.push(data.link as any);
         } else if (data?.type === 'missed_call' && data?.link) {
           router.push(data.link as any);
         } else if (data?.type === 'connection_request') {
           router.push('/(tabs)/circles' as any);
         } else if (data?.type === 'pulse_like' || data?.type === 'pulse_comment') {
           router.push('/(tabs)/index' as any);
+        } else if (data?.link) {
+          router.push(data.link as any);
         }
       },
     );
 
     return () => {
+      clearTimeout(registerTimer);
       if (notificationListener.current && Notifications) {
         try { Notifications.removeNotificationSubscription(notificationListener.current); } catch {}
       }
@@ -114,9 +132,13 @@ export function usePushNotifications(userId: string | undefined) {
 async function registerForPushNotifications(): Promise<string | null> {
   if (!Notifications || !Device || !Constants) return null;
 
+  console.log('[Push] isDevice:', Device.isDevice);
+  console.log('[Push] brand:', Device.brand);
+  console.log('[Push] modelName:', Device.modelName);
+
   // Nur auf echtem Geraet (nicht Simulator)
   if (!Device.isDevice) {
-    console.log('[Push] Nur auf echtem Geraet verfuegbar');
+    console.log('[Push] ABBRUCH: Nur auf echtem Geraet verfuegbar');
     return null;
   }
 
@@ -139,8 +161,9 @@ async function registerForPushNotifications(): Promise<string | null> {
     finalStatus = status;
   }
 
+  console.log('[Push] Permission Status: existing=', existingStatus, 'final=', finalStatus);
   if (finalStatus !== 'granted') {
-    console.log('[Push] Berechtigung nicht erteilt');
+    console.log('[Push] ABBRUCH: Berechtigung nicht erteilt (status:', finalStatus, ')');
     return null;
   }
 
@@ -165,12 +188,26 @@ async function registerForPushNotifications(): Promise<string | null> {
   }
 }
 
-async function registerTokenOnServer(token: string) {
-  await apiFetch('/notifications/register', {
-    method: 'POST',
-    body: JSON.stringify({
-      player_id: token,
-      platform: Platform.OS,
-    }),
-  });
+/** Token auf Server registrieren mit automatischem Retry */
+async function registerTokenWithRetry(token: string, maxRetries: number) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await apiFetch('/notifications/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          player_id: token,
+          platform: Platform.OS === 'ios' ? 'ios' : 'android',
+        }),
+      });
+      console.log(`[Push] Token auf Server registriert (Versuch ${attempt})`);
+      return; // Erfolg
+    } catch (err: any) {
+      console.warn(`[Push] Token-Registrierung fehlgeschlagen (Versuch ${attempt}/${maxRetries}):`, err?.message ?? err);
+      if (attempt < maxRetries) {
+        // Exponentielles Backoff: 3s, 6s, 12s
+        await new Promise((r) => setTimeout(r, 3000 * attempt));
+      }
+    }
+  }
+  console.error('[Push] Token-Registrierung endgueltig fehlgeschlagen nach', maxRetries, 'Versuchen');
 }

@@ -25,11 +25,20 @@ interface CallContextValue {
     partnerAvatar?: string | null;
     video?: boolean;
   }) => void;
+  triggerIncomingCall: (params: {
+    roomId: string;
+    channelId: string;
+    callerId: string;
+    callerName: string;
+    callerAvatar?: string | null;
+    isVideo: boolean;
+  }) => void;
   isInCall: boolean;
 }
 
 const CallContext = createContext<CallContextValue>({
   startCall: () => {},
+  triggerIncomingCall: () => {},
   isInCall: false,
 });
 
@@ -135,6 +144,31 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     }).catch(() => {});
   }, [userId, activeCall, outgoing]);
 
+  // ── Incoming Call via Push Notification (App war im Hintergrund) ──
+  const triggerIncomingCall = useCallback(({
+    roomId, channelId, callerId, callerName, callerAvatar, isVideo,
+  }: {
+    roomId: string;
+    channelId: string;
+    callerId: string;
+    callerName: string;
+    callerAvatar?: string | null;
+    isVideo: boolean;
+  }) => {
+    // Ignoriere wenn bereits in einem Call
+    if (activeCall || outgoing) return;
+
+    setIncoming({
+      roomId,
+      channelId,
+      partnerId: callerId,
+      partnerName: callerName,
+      partnerAvatar: callerAvatar,
+      isVideo,
+      callerId,
+    });
+  }, [activeCall, outgoing]);
+
   // ── Accept incoming ──
   const handleAccept = useCallback(() => {
     if (!incoming) return;
@@ -184,7 +218,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   }, [activeCall]);
 
   return (
-    <CallContext.Provider value={{ startCall, isInCall: !!activeCall }}>
+    <CallContext.Provider value={{ startCall, triggerIncomingCall, isInCall: !!activeCall }}>
       {children}
 
       {/* Incoming Call Overlay */}
