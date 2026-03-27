@@ -232,16 +232,22 @@ export async function transferSeeds(channelId: string, data: {
 // ══════════════════════════════════════════════════════════════
 
 export async function uploadChatImage(uri: string, userId: string): Promise<string> {
-  const ext = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+  // Query-Parameter aus URI entfernen (z.B. ?t=1234) bevor Endung geparst wird
+  const cleanUri = uri.split('?')[0];
+  const rawExt = cleanUri.split('.').pop()?.toLowerCase() ?? 'jpg';
+  // Nur bekannte Bild-Endungen akzeptieren
+  const ext = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(rawExt) ? rawExt : 'jpg';
+  const mimeType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
   const path = `${userId}/${Date.now()}.${ext}`;
 
-  // URI in Blob konvertieren fuer Supabase Upload
+  // URI → ArrayBuffer (zuverlaessiger als Blob in React Native)
   const response = await fetch(uri);
-  const blob = await response.blob();
+  if (!response.ok) throw new Error(`Bild konnte nicht geladen werden (${response.status})`);
+  const arrayBuffer = await response.arrayBuffer();
 
   const { error } = await supabase.storage
     .from('chat-images')
-    .upload(path, blob, { contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`, upsert: false });
+    .upload(path, arrayBuffer, { contentType: mimeType, upsert: false });
 
   if (error) throw new Error(`Upload fehlgeschlagen: ${error.message}`);
 

@@ -5,9 +5,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, Modal, TouchableOpacity,
+  View, Text, StyleSheet, Modal, TouchableOpacity, Pressable,
   TextInput, ScrollView, ActivityIndicator, Platform,
-  KeyboardAvoidingView, Alert,
+  KeyboardAvoidingView, Alert, SafeAreaView,
 } from 'react-native';
 import { useThemeStore } from '../store/theme';
 import { createEvent, geocodeLocation } from '../lib/events';
@@ -177,11 +177,10 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Props)
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
         <View style={[styles.sheet, { backgroundColor: colors.bgSolid, borderColor: colors.glassBorder }]}>
           {/* Gold-Leiste */}
           <View style={[styles.goldLine, { backgroundColor: colors.gold }]} />
@@ -392,14 +391,14 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Props)
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { flex: 1 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   sheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    paddingBottom: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     borderWidth: 1,
     borderBottomWidth: 0,
-    maxHeight: '90%',
     overflow: 'hidden',
   },
   goldLine: { height: 2, opacity: 0.6 },

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, Image, TextInput, KeyboardAvoidingView,
-  Platform, ActivityIndicator, Modal, Pressable, ScrollView, Keyboard,
+  Platform, ActivityIndicator, Modal, Pressable, ScrollView, Keyboard, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -89,6 +89,16 @@ export default function ChatRoomScreen() {
   const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  // Keyboard-Tracking fuer dynamische Input-Breite
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   // ── Daten laden ───────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -451,8 +461,12 @@ export default function ChatRoomScreen() {
         });
       }
       setPendingImages([]);
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('[Chat] Bild-Upload fehlgeschlagen:', e);
+      Alert.alert(
+        'Upload fehlgeschlagen',
+        e?.message ?? 'Das Bild konnte leider nicht gesendet werden. Versuch es nochmal.',
+      );
     } finally {
       setUploadingImage(false);
       setUploadProgress('');
@@ -1049,7 +1063,7 @@ export default function ChatRoomScreen() {
 
         {/* Input — nur wenn Suche nicht aktiv */}
         {!showSearch && (
-        <View style={[styles.inputRow, { borderTopColor: colors.dividerL }]}>
+        <View style={[styles.inputRow, { borderTopColor: colors.dividerL }, !keyboardVisible && styles.inputRowCompact]}>
           {/* Mehr-Aktionen Button (+) — oeffnet Bottom Sheet */}
           <TouchableOpacity
             style={styles.inputActionBtn}
@@ -1639,8 +1653,11 @@ const styles = StyleSheet.create({
   // Input
   inputRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 14, paddingVertical: 6,
+    paddingHorizontal: 14, paddingTop: 6, paddingBottom: 21,
     borderTopWidth: 1, borderTopColor: 'rgba(200,169,110,0.06)',
+  },
+  inputRowCompact: {
+    paddingHorizontal: 24, gap: 8,
   },
   actionBtn: {
     width: 34, height: 34, borderRadius: 17,

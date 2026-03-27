@@ -13,6 +13,7 @@ import {
 import type { Connection } from '../../types/circles';
 import type { Pulse } from '../../types/pulse';
 import PulseCard from '../../components/PulseCard';
+import CreatePulseModal from '../../components/CreatePulseModal';
 import { Icon } from '../../components/Icon';
 
 type Tab = 'feed' | 'connections' | 'requests';
@@ -23,6 +24,7 @@ export default function CirclesScreen() {
   const colors = useThemeStore((s) => s.colors);
   const userId = session?.user.id;
   const [tab, setTab] = useState<Tab>('feed');
+  const [showCreatePulse, setShowCreatePulse] = useState(false);
 
   // Feed
   const [feedPulses, setFeedPulses] = useState<Pulse[]>([]);
@@ -200,14 +202,13 @@ export default function CirclesScreen() {
     );
   };
 
-  return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.bgSolid }]}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.divider }]}>
-        <Icon name="users" size={22} color={colors.gold} />
-        <Text style={[styles.headerTitle, { color: colors.gold }]}>CIRCLE</Text>
-      </View>
+  const handlePulseCreated = (pulse: Pulse) => {
+    setShowCreatePulse(false);
+    setFeedPulses((prev) => [pulse, ...prev]);
+  };
 
+  return (
+    <View style={[styles.container, { backgroundColor: colors.bgSolid }]}>
       {/* Tab-Leiste */}
       <View style={[styles.tabs, { borderBottomColor: colors.dividerL }]}>
         {(['feed', 'connections', 'requests'] as Tab[]).map((t) => (
@@ -274,6 +275,23 @@ export default function CirclesScreen() {
         )
       )}
 
+      {/* FAB – Post erstellen (nur im Feed-Tab) */}
+      {tab === 'feed' && (
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: colors.gold }]}
+          onPress={() => setShowCreatePulse(true)}
+          activeOpacity={0.8}
+        >
+          <Icon name="plus" size={22} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      <CreatePulseModal
+        visible={showCreatePulse}
+        onClose={() => setShowCreatePulse(false)}
+        onCreated={handlePulseCreated}
+      />
+
       {tab === 'requests' && (
         reqLoading ? (
           <View style={styles.center}>
@@ -306,12 +324,6 @@ export default function CirclesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1,
-  },
-  headerTitle: { fontSize: 11, letterSpacing: 4 },
   tabs: {
     flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8,
     gap: 8, borderBottomWidth: 1,
@@ -371,4 +383,12 @@ const styles = StyleSheet.create({
     borderRadius: 99, borderWidth: 1,
   },
   cancelBtnText: { fontSize: 8, letterSpacing: 2 },
+  fab: {
+    position: 'absolute', bottom: 24, right: 16,
+    width: 56, height: 56, borderRadius: 28,
+    alignItems: 'center', justifyContent: 'center',
+    zIndex: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25, shadowRadius: 8, elevation: 8,
+  },
 });

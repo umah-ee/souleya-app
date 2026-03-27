@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { useThemeStore } from '../../store/theme';
 import { Icon } from '../Icon';
 import type { SoEvent } from '../../types/events';
@@ -48,6 +48,7 @@ export default function DiscoverMapView({
   const colors = useThemeStore((s) => s.colors);
   const themeMode = useThemeStore((s) => s.mode);
   const [mapboxReady, setMapboxReady] = useState(false);
+  const cameraRef = useRef<any>(null);
 
   // Mapbox initialisieren
   useEffect(() => {
@@ -59,6 +60,21 @@ export default function DiscoverMapView({
       // Fehler bei Initialisierung
     }
   }, []);
+
+  // Kamera auf neues Center bewegen wenn sich GPS aendert
+  useEffect(() => {
+    if (cameraRef.current && center) {
+      try {
+        cameraRef.current.setCamera({
+          centerCoordinate: center,
+          zoomLevel: 12,
+          animationDuration: 1000,
+        });
+      } catch {
+        // Camera nicht bereit
+      }
+    }
+  }, [center[0], center[1]]);
 
   // Fallback wenn Mapbox nicht verfuegbar
   if (!Mapbox || !MAPBOX_TOKEN || !mapboxReady) {
@@ -73,8 +89,10 @@ export default function DiscoverMapView({
   }
 
   const MapView = Mapbox.MapView;
-  const Camera = Mapbox.Camera;
+  const Camera = Mapbox.Camera as any;
   const PointAnnotation = Mapbox.PointAnnotation;
+  // MarkerView rendert Live-RN-Views (kein Snapshot) → Netzwerk-Bilder laden korrekt
+  const MarkerView = (Mapbox as any).MarkerView ?? null;
 
   return (
     <View style={styles.container}>
@@ -93,7 +111,9 @@ export default function DiscoverMapView({
           }
         }}
       >
+        {/* @ts-ignore – @rnmapbox/maps v10.2 Types sind unvollstaendig, ref funktioniert zur Laufzeit */}
         <Camera
+          ref={cameraRef}
           defaultSettings={{
             centerCoordinate: center,
             zoomLevel: 12,
@@ -101,13 +121,9 @@ export default function DiscoverMapView({
         />
 
         {/* User Markers – Gold Kreis mit Avatar */}
-        {users.map((user) => (
-          <PointAnnotation
-            key={`user-${user.id}`}
-            id={`user-${user.id}`}
-            coordinate={[user.location_lng, user.location_lat]}
-            onSelected={() => onUserPress?.(user)}
-          >
+        {users.map((user) => {
+          const initial = (user.display_name ?? user.username ?? '?').slice(0, 1).toUpperCase();
+          const markerContent = (
             <View style={[
               styles.userMarker,
               { borderColor: user.is_first_light ? colors.gold : `${colors.gold}88` },
@@ -115,13 +131,36 @@ export default function DiscoverMapView({
               {user.avatar_url ? (
                 <Image source={{ uri: user.avatar_url }} style={styles.userMarkerImg} />
               ) : (
-                <Text style={styles.userMarkerInitial}>
-                  {(user.display_name ?? user.username ?? '?').slice(0, 1).toUpperCase()}
-                </Text>
+                <Text style={styles.userMarkerInitial}>{initial}</Text>
               )}
             </View>
-          </PointAnnotation>
-        ))}
+          );
+
+          // MarkerView (falls verfuegbar) rendert RN-Views live → Netzwerk-Bilder laden korrekt
+          if (MarkerView) {
+            return (
+              <MarkerView
+                key={`user-${user.id}`}
+                id={`user-${user.id}`}
+                coordinate={[user.location_lng, user.location_lat]}
+              >
+                <TouchableOpacity activeOpacity={0.8} onPress={() => onUserPress?.(user)}>
+                  {markerContent}
+                </TouchableOpacity>
+              </MarkerView>
+            );
+          }
+          return (
+            <PointAnnotation
+              key={`user-${user.id}`}
+              id={`user-${user.id}`}
+              coordinate={[user.location_lng, user.location_lat]}
+              onSelected={() => onUserPress?.(user)}
+            >
+              {markerContent}
+            </PointAnnotation>
+          );
+        })}
 
         {/* Event Markers – Lila Kreis mit Kalender-Icon */}
         {events.map((event) => (
