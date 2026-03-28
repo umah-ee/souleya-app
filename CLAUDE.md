@@ -27,7 +27,7 @@ EXPO_PUBLIC_MAPBOX_TOKEN=<mapbox_public_token>
 
 ## Kernabhängigkeiten
 
-- **Expo 54** + React Native 0.81 + React 19 + TypeScript 5
+- **Expo 54** + React Native 0.81 + React 19 + TypeScript 5 + **React Compiler** (`babel-plugin-react-compiler`, target `19`)
 - **Expo Router 6** – File-based Navigation
 - **Supabase JS** – Auth + Realtime
 - **TanStack React Query** – Server State
@@ -125,14 +125,15 @@ Der Enso-Ring als Profil-Avatar-Rahmen (Soul Levels, First Light, Mentor-Kompass
 | Theme (Light/Dark) | ✅ | Zustand + SecureStore-Persistenz |
 | Benachrichtigungen | ✅ | NotificationBell, Zustand Store, Realtime + 30s Polling, Badge-Pulse |
 | Soul Level | ✅ | SoulProgressCard (Level 2-4), LevelUpModal (Animation) |
-| WebRTC Calls | ✅ | CallProvider (global), VideoCallOverlay, IncomingCallOverlay, Audio+Video |
+| Push Notifications | ✅ | Expo Push API, Foreground-Handler, Deep-Linking bei Tap |
+| WebRTC Calls | ✅ | CallProvider (global), VideoCallOverlay, IncomingCallOverlay, Audio+Video, Speaker Toggle |
 | Event Reviews | ✅ | EventReviewForm (5 Sterne + Kommentar), EventReviewCard |
 | Mentor-Voting | ✅ | NominationCard (Fortschrittsbalken, Ja/Nein Abstimmung) |
 | Studio | ✅ | Dashboard, Kurse, Content, Kalender, F2F, Circle, Finanzen |
 | Challenges | ✅ | ChallengeCard, CreateChallengeModal, Chat-Integration |
-| Mapbox-Karte | ⏳ | Platzhalter (funktioniert nur in Dev-Build) |
-| Event-Erstellung | ❌ | Fehlt (in Web vorhanden) |
-| Event-Bookmarks | ❌ | Fehlt |
+| Mapbox-Karte | ✅ | |
+| Event-Erstellung | ✅ | |
+| Event-Bookmarks | ✅ | inkl. Share-Button |
 
 ---
 
@@ -184,15 +185,25 @@ Config in `eas.json`. Bundle ID: `com.souleya.app`
 
 ## Fehlend gegenueber Web
 
-- ❌ Discover: Event-Erstellung, Bookmarks, Share, Mapbox-Karte (nur Platzhalter)
-- ❌ Chat: Link-Vorschau (OpenGraph), Full Emoji Picker (emoji-mart)
-- ❌ Analytics (Platzhalter)
+- ✅ Banner-Crop-Modal
 
 ## Letzte Aenderungen (Maerz 2026)
 
 - **NotificationBell Crash-Fix (v3):** Komponente mit **eigener Error Boundary** (`NotificationBellBoundary`) abgesichert — ein Crash in der Glocke blockiert nicht mehr die gesamte App. Inner Component (`NotificationBellInner`) mit defensiven try-catch Bloecken um jeden Hook (`useThemeStore`, `useNotificationStore`, `useRouter`). Fallback-Farben wenn Theme nicht geladen. Store-Zugriff ueber individuelle Selectors (nicht Destrukturierung).
 - **TypeScript bereinigt:** Fehlende IconNames (`brand-apple`, `eye`, `eye-off`, `mail`, `bell-off`) ergaenzt. Fehlende ThemeColors (`text`, `cardBg`, `bgElevated`) ergaenzt. Chat-Types erweitert (`pinned_at`, `display_name` etc.). WebRTC-Hook auf property-basierte Event-Handler umgestellt (`ontrack` statt `addEventListener`). Entry-Point auf `expo-router/entry` korrigiert.
 - **OnboardingWizard:** Fullscreen-Overlay in `(tabs)/_layout.tsx` integriert, zeigt automatisch bei Soul Level 1
+- **Analytics entfernt:** Aus Mehr-Menue entfernt (ist im Web nur Platzhalter im Studio)
+- **UserMenu:** Neue Komponente `components/layout/UserMenu.tsx` — NotificationBell + Profil-EnsoRing mit Avatar im headerRight. EnsoRing-Komponente (`components/shared/EnsoRing.tsx`) fuer React Native erstellt (Soul Level 1–5, First Light Halo, Mentor-Kompassstern).
+- **Pulse Dashboard:** Komplettes Wellness-Dashboard als `ListHeaderComponent` ueber dem Feed. GreetingCard (zeitbasiert), WisdomCard (Tageszitat + Share), ToolkitSection (8 modulare Werkzeuge mit AsyncStorage-Persistenz: Atem, Meditation, Dankbarkeit, Intention, Journal, Check-in, Tagesimpuls, Bewegung), ModulePickerModal (Bottom Sheet), ChallengeWidget (aktive Challenge mit Streak-Dots), NearbyEventsWidget (naechste 3 Events mit Entfernung). 17 neue Dateien in `components/pulse/dashboard/` und `components/pulse/modules/`.
+- **NotificationBell Lazy-Import:** Store wird per `require()` statt Top-Level-Import geladen. Wenn der Import fehlschlaegt, zeigt die Glocke trotzdem — nur ohne Badge/Daten. Behebt den `TypeError: undefined is not a function` Production-Crash.
+- **BannerCropModal:** Neues Modal (`components/profile/BannerCropModal.tsx`) mit PanResponder fuer vertikale Banner-Positionierung. Speichert `banner_pos_y` (0–100) via API. ProfileBanner zeigt Banner mit gespeicherter Position. Foto-Icon-Button zum Oeffnen. Erfordert Migration 056.
+- **Push Notifications (Expo Push API):** OneSignal komplett durch Expo Push API ersetzt. `usePushNotifications` Hook registriert Expo Push Token via `POST /notifications/register`. Foreground-Handler (`setNotificationHandler`) zeigt Benachrichtigungen auch bei geoeffneter App. Deep-Linking bei Tap auf Notification (Chat, Circle, Pulse). Dynamischer Import fuer Expo Go Kompatibilitaet.
+- **Chat-Eingabe Fixes:** Input-Row und Aktionsleiste werden ausgeblendet wenn Suche aktiv. Modals (Poll, Seeds, Challenge) schliessen Aktionsleiste vor dem Oeffnen (300ms Delay fuer sauberes Keyboard-Dismiss). Input-Row spacing angepasst (`paddingHorizontal: 12`, `gap: 8`). KAV-Offset reduziert auf `insets.top + 10`.
+- **Caller-Name Fix:** Partnername bei Anrufen aus `partner.profile.display_name` statt `partner.display_name`. CallProvider sendet eigenen Avatar mit (`myAvatarUrl`).
+- **Call-Verbindung Fix:** IncomingCallOverlay lauscht auf korrekten Channel (`call:${roomId}:cancel`). Zusaetzlich `call_cancelled` Event-Handler.
+- **Speaker Toggle:** `useWebRTC` Hook mit `isSpeakerOn`/`toggleSpeaker` (react-native-incall-manager). VideoCallOverlay zeigt Speaker-Button. Video-Calls starten automatisch mit Lautsprecher.
+- **Tab Bar vergroessert:** Hoehe 82px, Icons 24px, Labels 11px fuer bessere Touch-Targets.
+- **Live-Standort Countdown:** LocationShareCard zeigt Ablauf-Countdown ("noch X Min") fuer Live-Standorte.
 
 ---
 

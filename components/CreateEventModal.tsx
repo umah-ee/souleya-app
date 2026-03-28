@@ -177,11 +177,11 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Props)
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
-        style={styles.overlay}
+        style={styles.kav}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Pressable style={{ flex: 1 }} onPress={onClose} />
-        <View style={[styles.sheet, { backgroundColor: colors.bgSolid, borderColor: colors.glassBorder }]}>
+        <Pressable style={styles.overlay} onPress={onClose}>
+        <Pressable style={[styles.sheet, { backgroundColor: colors.bgSolid, borderColor: colors.glassBorder }]} onPress={() => {}}>
           {/* Gold-Leiste */}
           <View style={[styles.goldLine, { backgroundColor: colors.gold }]} />
 
@@ -384,13 +384,15 @@ export default function CreateEventModal({ visible, onClose, onCreated }: Props)
 
             <View style={{ height: 20 }} />
           </ScrollView>
-        </View>
+        </Pressable>
+        </Pressable>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  kav: { flex: 1 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   sheet: {
     maxHeight: '85%',
@@ -415,7 +417,7 @@ const styles = StyleSheet.create({
     width: 28, height: 28, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
   },
-  body: { flex: 1 },
+  body: { flexShrink: 1 },
   bodyContent: { paddingHorizontal: 20, paddingBottom: 40 },
 
   label: {

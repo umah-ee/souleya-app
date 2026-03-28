@@ -1,10 +1,14 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import { apiFetch } from '../../lib/api';
 import { useAuthStore } from '../../store/auth';
 import { fetchProfile } from '../../lib/profile';
 import VideoCallOverlay from './VideoCallOverlay';
 import IncomingCallOverlay from './IncomingCallOverlay';
+import { useCallKit } from '../../hooks/useCallKit';
+
+const PENDING_CALL_KEY = 'souleya_pending_call';
 
 // ── Types ──
 
@@ -56,6 +60,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const [myDisplayName, setMyDisplayName] = useState('Jemand');
   const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
   const endingRef = useRef(false);
+  const incomingRef = useRef(incoming);
 
   // Eigenen Display-Name + Avatar laden fuer Anruf-Anzeige beim Gegenueber
   useEffect(() => {
@@ -64,6 +69,65 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       .then((p) => {
         setMyDisplayName(p.display_name || p.username || 'Jemand');
         setMyAvatarUrl(p.avatar_url || null);
+      })
+      .catch(() => {});
+  }, [userId]);
+
+  // incomingRef aktuell halten (für CallKit-Callbacks)
+  useEffect(() => { incomingRef.current = incoming; }, [incoming]);
+
+  // ── CallKit Integration ─────────────────────────────────────
+  const callKit = useCallKit({
+    userId,
+    onIncomingCall: (call) => {
+      if (activeCall || outgoing) return;
+      setIncoming({
+        roomId: call.roomId,
+        channelId: call.channelId,
+        partnerId: call.callerId,
+        partnerName: call.callerName,
+        partnerAvatar: call.callerAvatar,
+        isVideo: call.isVideo,
+        callerId: call.callerId,
+      });
+    },
+    onCallAnswered: (_uuid) => {
+      // User hat im nativen Screen angenommen → In-App-Overlay starten
+      const inc = incomingRef.current;
+      if (!inc) return;
+      setActiveCall({
+        roomId: inc.roomId,
+        channelId: inc.channelId,
+        partnerId: inc.callerId,
+        partnerName: inc.partnerName,
+        partnerAvatar: inc.partnerAvatar,
+        isVideo: inc.isVideo,
+        isCaller: false,
+      });
+      setIncoming(null);
+    },
+    onCallEnded: (_uuid) => {
+      setIncoming(null);
+    },
+  });
+
+  // ── Pending Call aus Push Notification (App war beendet) ──
+  useEffect(() => {
+    if (!userId) return;
+    AsyncStorage.getItem(PENDING_CALL_KEY)
+      .then((stored) => {
+        if (!stored) return;
+        AsyncStorage.removeItem(PENDING_CALL_KEY).catch(() => {});
+        const callData = JSON.parse(stored);
+        setIncoming({
+          roomId: callData.roomId,
+          channelId: callData.channelId,
+          partnerId: callData.callerId,
+          partnerName: callData.callerName,
+          partnerAvatar: callData.callerAvatar ?? null,
+          isVideo: callData.isVideo ?? false,
+          callerId: callData.callerId,
+        });
       })
       .catch(() => {});
   }, [userId]);
@@ -78,6 +142,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         // Ignoriere wenn bereits in einem Call
         if (activeCall || outgoing) return;
 
+        const callUuid = payload.roomId;
         setIncoming({
           roomId: payload.roomId,
           channelId: payload.channelId,
@@ -87,6 +152,8 @@ export default function CallProvider({ children }: { children: React.ReactNode }
           isVideo: payload.isVideo ?? false,
           callerId: payload.callerId,
         });
+        // Nativen CallKit-Screen zeigen (App ist im Vordergrund → auch schön)
+        callKit.displayIncomingCall(callUuid, payload.callerName, payload.isVideo ?? false);
       })
       .on('broadcast', { event: 'call_cancelled' }, () => {
         setIncoming(null);
@@ -172,6 +239,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   // ── Accept incoming ──
   const handleAccept = useCallback(() => {
     if (!incoming) return;
+    callKit.answerCall(incoming.roomId);
     setActiveCall({
       roomId: incoming.roomId,
       channelId: incoming.channelId,
@@ -182,11 +250,12 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       isCaller: false,
     });
     setIncoming(null);
-  }, [incoming]);
+  }, [incoming, callKit]);
 
   // ── Reject incoming ──
   const handleReject = useCallback(() => {
     if (incoming) {
+      callKit.endCall(incoming.roomId);
       // Notify caller
       const ch = supabase.channel(`call:${incoming.roomId}`);
       ch.subscribe((status) => {
@@ -197,7 +266,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       });
     }
     setIncoming(null);
-  }, [incoming]);
+  }, [incoming, callKit]);
 
   // ── End active call ──
   const handleEnd = useCallback(() => {
@@ -205,6 +274,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     endingRef.current = true;
 
     if (activeCall) {
+      callKit.endCall(activeCall.roomId);
       // API: call ended
       apiFetch(`/chat/channels/${activeCall.channelId}/call-end`, {
         method: 'POST',
@@ -215,7 +285,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     setActiveCall(null);
     setOutgoing(null);
     endingRef.current = false;
-  }, [activeCall]);
+  }, [activeCall, callKit]);
 
   return (
     <CallContext.Provider value={{ startCall, triggerIncomingCall, isInCall: !!activeCall }}>

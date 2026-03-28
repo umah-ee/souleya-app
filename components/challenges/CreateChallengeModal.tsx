@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView,
+  View, Text, TextInput, TouchableOpacity, ScrollView, Pressable,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Modal,
 } from 'react-native';
 import { useThemeStore } from '../../store/theme';
@@ -33,7 +33,6 @@ export default function CreateChallengeModal({ visible, onClose, onCreated, chan
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Reset bei Schliessen
   useEffect(() => {
     if (!visible) {
       setTitle('');
@@ -46,15 +45,8 @@ export default function CreateChallengeModal({ visible, onClose, onCreated, chan
 
   const handleSubmit = async () => {
     setError('');
-
-    if (!title.trim()) {
-      setError('Bitte gib einen Titel ein.');
-      return;
-    }
-    if (title.trim().length > 200) {
-      setError('Der Titel darf maximal 200 Zeichen lang sein.');
-      return;
-    }
+    if (!title.trim()) { setError('Bitte gib einen Titel ein.'); return; }
+    if (title.trim().length > 200) { setError('Der Titel darf maximal 200 Zeichen lang sein.'); return; }
 
     const data: CreateChallengeData = {
       title: title.trim(),
@@ -79,37 +71,27 @@ export default function CreateChallengeModal({ visible, onClose, onCreated, chan
 
   const canSubmit = title.trim().length > 0 && !saving;
 
+  // Exaktes Layout-Pattern wie CreatePollModal (funktioniert)
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-
-        <View style={[styles.sheet, { backgroundColor: colors.bgGradientStart, borderColor: colors.goldBorderS }]}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <Pressable style={[styles.content, { backgroundColor: colors.bgGradientStart || colors.bgSolid }]}>
           {/* Handle */}
-          <View style={[styles.handle, { backgroundColor: colors.goldBorderS }]} />
+          <View style={[styles.handle, { backgroundColor: colors.goldBorderS || 'rgba(200,169,110,0.3)' }]} />
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: colors.goldDeep }]}>NEUE CHALLENGE</Text>
-            <TouchableOpacity
-              style={[styles.closeBtn, { backgroundColor: colors.glass }]}
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
-              <Icon name="x" size={14} color={colors.textMuted} />
+            <Text style={[styles.headerTitle, { color: colors.goldDeep || colors.gold }]}>NEUE CHALLENGE</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Icon name="x" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
-          {/* Scrollbarer Inhalt */}
-          <ScrollView
-            style={styles.body}
-            contentContainerStyle={styles.bodyContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
+          <ScrollView style={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             {/* Titel */}
             <Text style={[styles.label, { color: colors.textMuted }]}>TITEL *</Text>
             <TextInput
@@ -187,18 +169,13 @@ export default function CreateChallengeModal({ visible, onClose, onCreated, chan
               })}
             </View>
 
-            {/* Fehler */}
             {error !== '' && (
               <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
             )}
 
             {/* Submit */}
             <TouchableOpacity
-              style={[
-                styles.submitBtn,
-                { backgroundColor: colors.gold },
-                !canSubmit && { opacity: 0.35 },
-              ]}
+              style={[styles.submitBtn, { backgroundColor: colors.gold }, !canSubmit && { opacity: 0.35 }]}
               onPress={handleSubmit}
               disabled={!canSubmit}
               activeOpacity={0.85}
@@ -209,131 +186,75 @@ export default function CreateChallengeModal({ visible, onClose, onCreated, chan
                 <Text style={[styles.submitBtnText, { color: colors.textOnGold }]}>CHALLENGE STARTEN</Text>
               )}
             </TouchableOpacity>
+
+            <View style={{ height: 20 }} />
           </ScrollView>
-        </View>
+        </Pressable>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  // Exakt wie CreatePollModal
   overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  sheet: {
-    maxHeight: '90%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    overflow: 'hidden',
+  content: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '85%',
+    paddingBottom: 32,
   },
   handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 8,
+    width: 40, height: 4, borderRadius: 2,
+    alignSelf: 'center', marginTop: 12, marginBottom: 8,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingBottom: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(200,169,110,0.06)',
   },
   headerTitle: {
     fontSize: 10,
     letterSpacing: 4,
     fontWeight: '600',
   },
-  closeBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   body: {
-    flex: 1,
-  },
-  bodyContent: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
-    gap: 4,
+    paddingTop: 12,
   },
   label: {
-    fontSize: 9,
-    letterSpacing: 2,
-    marginTop: 12,
-    marginBottom: 4,
-    fontWeight: '500',
+    fontSize: 9, letterSpacing: 2,
+    marginTop: 12, marginBottom: 4, fontWeight: '500',
   },
   input: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    fontWeight: '400',
+    borderWidth: 1, borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 14, fontWeight: '400',
   },
-  textArea: {
-    minHeight: 72,
-    textAlignVertical: 'top',
-  },
-
-  // ── Emoji Grid ──────────────────────────────────────────
-  emojiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
+  textArea: { minHeight: 72, textAlignVertical: 'top' },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   emojiBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 44, height: 44, borderRadius: 10,
+    borderWidth: 1.5, alignItems: 'center', justifyContent: 'center',
   },
-  // ── Duration Row ────────────────────────────────────────
-  durationRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  durationRow: { flexDirection: 'row', gap: 8 },
   durationBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 99,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1, paddingVertical: 10, borderRadius: 99,
+    borderWidth: 1, alignItems: 'center', justifyContent: 'center',
   },
-  durationBtnText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-
-  // ── Error + Submit ──────────────────────────────────────
-  errorText: {
-    fontSize: 12,
-    marginTop: 8,
-  },
+  durationBtnText: { fontSize: 12, fontWeight: '500' },
+  errorText: { fontSize: 12, marginTop: 8 },
   submitBtn: {
-    marginTop: 20,
-    paddingVertical: 14,
-    borderRadius: 99,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: 20, paddingVertical: 14, borderRadius: 99,
+    alignItems: 'center', justifyContent: 'center',
   },
-  submitBtnText: {
-    fontSize: 10,
-    letterSpacing: 3,
-    fontWeight: '600',
-  },
+  submitBtnText: { fontSize: 10, letterSpacing: 3, fontWeight: '600' },
 });

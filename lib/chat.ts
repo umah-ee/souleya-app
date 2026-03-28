@@ -236,7 +236,7 @@ export async function uploadChatImage(uri: string, userId: string): Promise<stri
   const cleanUri = uri.split('?')[0];
   const rawExt = cleanUri.split('.').pop()?.toLowerCase() ?? 'jpg';
   // Nur bekannte Bild-Endungen akzeptieren
-  const ext = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'].includes(rawExt) ? rawExt : 'jpg';
+  const ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(rawExt) ? rawExt : 'jpg';
   const mimeType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
   const path = `${userId}/${Date.now()}.${ext}`;
 

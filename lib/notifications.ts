@@ -19,7 +19,16 @@ export interface AppNotification {
 // ── API Calls ──
 
 export async function fetchNotifications(page = 1, limit = 20): Promise<AppNotification[]> {
-  return apiFetch<AppNotification[]>(`/notifications?page=${page}&limit=${limit}`);
+  const res = await apiFetch<{ data: AppNotification[]; total: number } | AppNotification[]>(
+    `/notifications?page=${page}&limit=${limit}`,
+  );
+  // API gibt { data: [...], total: N } zurueck — Array extrahieren
+  if (res && typeof res === 'object' && 'data' in res && Array.isArray((res as any).data)) {
+    return (res as any).data;
+  }
+  // Fallback: falls API direkt ein Array liefert
+  if (Array.isArray(res)) return res;
+  return [];
 }
 
 export async function fetchUnreadCount(): Promise<number> {

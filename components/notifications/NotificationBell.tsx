@@ -31,13 +31,24 @@ class NotificationBellBoundary extends Component<{ children: React.ReactNode }, 
 
   render() {
     if (this.state.hasError) {
+      // Fallback: Glocke ohne Badge anzeigen (statt unsichtbar)
       return (
         <View style={{ padding: 6 }}>
-          <View style={{ width: 22, height: 22, opacity: 0.4 }} />
+          <FallbackBellIcon />
         </View>
       );
     }
     return this.props.children;
+  }
+}
+
+/** Statische Glocke ohne Store-Abhaengigkeit (Fallback bei Crash) */
+function FallbackBellIcon() {
+  try {
+    const colors = useThemeStore((s) => s.colors);
+    return <Icon name="bell" size={22} color={colors?.textSec ?? '#8A8480'} />;
+  } catch {
+    return <Icon name="bell" size={22} color="#8A8480" />;
   }
 }
 
@@ -74,74 +85,102 @@ function timeAgo(dateStr: string): string {
 // ── Inner Component ──
 
 function NotificationBellInner() {
-  const colors = useThemeStore((s) => s.colors);
+  // Alle Store-Zugriffe defensiv mit Fallback-Werten
+  let colors: any;
+  try { colors = useThemeStore((s) => s.colors); } catch { colors = null; }
+  if (!colors) colors = { textSec: '#8A8480', gold: '#C8A96E', textH: '#F0E8D8', textMuted: '#5A5450', bgSolid: '#1A1A1A', divider: '#333' };
+
   const [open, setOpen] = useState(false);
-  const router = useRouter();
+
+  let router: any;
+  try { router = useRouter(); } catch { router = null; }
+
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const prevCount = useRef(-1);
   const initialLoadDone = useRef(false);
 
-  // Direkter Import statt lazy require — zuverlaessiger fuer Badge-Updates
-  const notifications = useNotificationStore((s) => s.notifications) ?? [];
-  const unreadCount = useNotificationStore((s) => s.unreadCount) ?? 0;
-  const markRead = useNotificationStore((s) => s.markRead);
-  const markAllRead = useNotificationStore((s) => s.markAllRead);
-  const removeOne = useNotificationStore((s) => s.removeOne);
-  const removeRead = useNotificationStore((s) => s.removeRead);
+  // Store-Zugriffe einzeln mit Fallback
+  let rawNotifications: any;
+  let unreadCount = 0;
+  let markRead: ((id: string) => Promise<void>) | undefined;
+  let markAllRead: (() => Promise<void>) | undefined;
+  let removeOne: ((id: string) => Promise<void>) | undefined;
+  let removeRead: (() => Promise<void>) | undefined;
+
+  try {
+    rawNotifications = useNotificationStore((s) => s.notifications);
+    unreadCount = useNotificationStore((s) => s.unreadCount) ?? 0;
+    markRead = useNotificationStore((s) => s.markRead);
+    markAllRead = useNotificationStore((s) => s.markAllRead);
+    removeOne = useNotificationStore((s) => s.removeOne);
+    removeRead = useNotificationStore((s) => s.removeRead);
+  } catch (err) {
+    console.warn('[NotificationBell] Store-Zugriff fehlgeschlagen:', err);
+  }
+
+  // Sicherstellen dass notifications immer ein Array ist
+  const notifications = Array.isArray(rawNotifications) ? rawNotifications : [];
+  if (typeof unreadCount !== 'number' || isNaN(unreadCount)) unreadCount = 0;
 
   // Pulse animation — nur bei NEUEN Benachrichtigungen, nicht beim initialen Load
   useEffect(() => {
-    if (!initialLoadDone.current) {
-      // Erster Load: Count merken, kein Pulse
+    try {
+      if (!initialLoadDone.current) {
+        prevCount.current = unreadCount;
+        initialLoadDone.current = true;
+        return;
+      }
+      if (unreadCount > prevCount.current && unreadCount > 0) {
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.3, duration: 150, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.3, duration: 150, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+        ]).start();
+      }
       prevCount.current = unreadCount;
-      initialLoadDone.current = true;
-      return;
-    }
-    if (unreadCount > prevCount.current && unreadCount > 0) {
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.3, duration: 150, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1.3, duration: 150, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
-      ]).start();
-    }
-    prevCount.current = unreadCount;
+    } catch {}
   }, [unreadCount]);
 
-  const hasRead = notifications.some((n: any) => n?.is_read);
+  const hasRead = notifications.some((n: any) => n?.is_read === true);
 
   const handlePress = useCallback((notif: any) => {
-    if (!notif.is_read && markRead) markRead(notif.id);
-    setOpen(false);
-    if (notif.link) router.push(notif.link as any);
+    try {
+      if (!notif?.is_read && markRead) markRead(notif.id);
+      setOpen(false);
+      if (notif?.link && router) router.push(notif.link as any);
+    } catch {}
   }, [markRead, router]);
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={[styles.notifRow, !item.is_read && { backgroundColor: `${colors.gold}08` }]}
-      onPress={() => handlePress(item)}
-      activeOpacity={0.7}
-    >
-      {!item.is_read && <View style={[styles.unreadDot, { backgroundColor: colors.gold }]} />}
-      <View style={styles.avatarWrap}>
-        {item.actor_avatar_url ? (
-          <Image source={{ uri: item.actor_avatar_url }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.iconCircle, { backgroundColor: `${colors.gold}18` }]}>
-            <Icon name={typeIcon(item.type) as any} size={16} color={colors.gold} />
-          </View>
-        )}
-      </View>
-      <View style={styles.notifContent}>
-        <Text style={[styles.notifTitle, { color: colors.textH }]} numberOfLines={2}>{item.title}</Text>
-        {item.body ? <Text style={[styles.notifBody, { color: colors.textSec }]} numberOfLines={1}>{item.body}</Text> : null}
-        <Text style={[styles.notifTime, { color: colors.textMuted }]}>{timeAgo(item.created_at)}</Text>
-      </View>
-      <TouchableOpacity style={styles.deleteBtn} onPress={() => removeOne?.(item.id)} hitSlop={8}>
-        <Icon name="x" size={14} color={colors.textMuted} />
+  const renderItem = ({ item }: { item: any }) => {
+    if (!item) return null;
+    return (
+      <TouchableOpacity
+        style={[styles.notifRow, !item.is_read && { backgroundColor: `${colors.gold}08` }]}
+        onPress={() => handlePress(item)}
+        activeOpacity={0.7}
+      >
+        {!item.is_read && <View style={[styles.unreadDot, { backgroundColor: colors.gold }]} />}
+        <View style={styles.avatarWrap}>
+          {item.actor_avatar_url ? (
+            <Image source={{ uri: item.actor_avatar_url }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.iconCircle, { backgroundColor: `${colors.gold}18` }]}>
+              <Icon name={typeIcon(item.type) as any} size={16} color={colors.gold} />
+            </View>
+          )}
+        </View>
+        <View style={styles.notifContent}>
+          <Text style={[styles.notifTitle, { color: colors.textH }]} numberOfLines={2}>{item.title ?? ''}</Text>
+          {item.body ? <Text style={[styles.notifBody, { color: colors.textSec }]} numberOfLines={1}>{item.body}</Text> : null}
+          <Text style={[styles.notifTime, { color: colors.textMuted }]}>{timeAgo(item.created_at ?? '')}</Text>
+        </View>
+        <TouchableOpacity style={styles.deleteBtn} onPress={() => { try { removeOne?.(item.id); } catch {} }} hitSlop={8}>
+          <Icon name="x" size={14} color={colors.textMuted} />
+        </TouchableOpacity>
       </TouchableOpacity>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   return (
     <>
@@ -165,12 +204,12 @@ function NotificationBellInner() {
             <Text style={[styles.panelTitle, { color: colors.textH }]}>Benachrichtigungen</Text>
             <View style={styles.headerActions}>
               {unreadCount > 0 && (
-                <TouchableOpacity onPress={() => markAllRead?.()} hitSlop={8}>
+                <TouchableOpacity onPress={() => { try { markAllRead?.(); } catch {} }} hitSlop={8}>
                   <Text style={[styles.headerAction, { color: colors.gold }]}>Alle gelesen</Text>
                 </TouchableOpacity>
               )}
               {hasRead && (
-                <TouchableOpacity onPress={() => removeRead?.()} hitSlop={8}>
+                <TouchableOpacity onPress={() => { try { removeRead?.(); } catch {} }} hitSlop={8}>
                   <Text style={[styles.headerAction, { color: colors.textMuted }]}>Gelesene loeschen</Text>
                 </TouchableOpacity>
               )}
@@ -182,7 +221,7 @@ function NotificationBellInner() {
               <Text style={[styles.emptyText, { color: colors.textMuted }]}>Noch keine Benachrichtigungen</Text>
             </View>
           ) : (
-            <FlatList data={notifications} keyExtractor={(n) => n.id} renderItem={renderItem} showsVerticalScrollIndicator={false} style={styles.list} />
+            <FlatList data={notifications} keyExtractor={(n) => n?.id ?? Math.random().toString()} renderItem={renderItem} showsVerticalScrollIndicator={false} style={styles.list} />
           )}
         </View>
       </Modal>

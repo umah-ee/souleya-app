@@ -82,9 +82,17 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         fetchNotifications(1, 20),
         fetchUnreadCount(),
       ]);
-      set({ notifications: notifs, unreadCount: count, isLoading: false });
-    } catch {
-      // Stille Fehlerbehandlung — nächster Poll versucht es erneut
+      const safeNotifs = Array.isArray(notifs) ? notifs : [];
+      const safeCount = typeof count === 'number' && !isNaN(count) ? count : 0;
+      console.log(`[Notifications] Refresh: ${safeNotifs.length} Eintraege, ${safeCount} ungelesen`);
+      set({
+        notifications: safeNotifs,
+        unreadCount: safeCount,
+        isLoading: false,
+      });
+    } catch (err) {
+      console.warn('[Notifications] Refresh fehlgeschlagen:', err);
+      set({ isLoading: false });
     }
   },
 

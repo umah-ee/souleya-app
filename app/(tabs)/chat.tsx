@@ -3,6 +3,7 @@ import {
   View, Text, FlatList, TouchableOpacity,
   StyleSheet, Image, RefreshControl, Modal,
   TextInput, ActivityIndicator, Pressable,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -133,20 +134,7 @@ export default function ChatTab() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgSolid }]} edges={['top']}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.dividerL }]}>
-        <Text style={[styles.headerTitle, { color: colors.gold }]}>Chat</Text>
-        <TouchableOpacity
-          style={[styles.newChatBtn, { backgroundColor: colors.gold }]}
-          onPress={() => setShowNewChat(true)}
-          activeOpacity={0.7}
-        >
-          <Icon name="plus" size={14} color={colors.textOnGold} />
-          <Text style={[styles.newChatBtnText, { color: colors.textOnGold }]}>NEU</Text>
-        </TouchableOpacity>
-      </View>
-
+    <View style={[styles.container, { backgroundColor: colors.bgSolid }]}>
       {/* Channel-Liste */}
       {loading ? (
         <View style={styles.center}>
@@ -176,13 +164,22 @@ export default function ChatTab() {
         />
       )}
 
+      {/* FAB: Neuer Chat */}
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: colors.gold }]}
+        onPress={() => setShowNewChat(true)}
+        activeOpacity={0.85}
+      >
+        <Icon name="plus" size={22} color={colors.textOnGold} />
+      </TouchableOpacity>
+
       {/* Neuer Chat Modal */}
       <NewChatModal
         visible={showNewChat}
         onClose={() => setShowNewChat(false)}
         onCreated={handleChatCreated}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -272,7 +269,10 @@ function NewChatModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={[styles.modalContent, { backgroundColor: colors.glassNav }]}>
           {/* Header */}
           <View style={[styles.modalHeader, { borderBottomColor: colors.dividerL }]}>
@@ -416,25 +416,20 @@ function NewChatModal({
             </TouchableOpacity>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1,
+  fab: {
+    position: 'absolute', right: 20, bottom: 80,
+    width: 52, height: 52, borderRadius: 26,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#C8A96E', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 12, elevation: 8,
   },
-  headerTitle: { fontSize: 22, fontWeight: '400' },
-  newChatBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 14, paddingVertical: 7,
-    borderRadius: 20,
-  },
-  newChatBtnText: { fontSize: 9, letterSpacing: 2, fontWeight: '500' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: {
     flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32,

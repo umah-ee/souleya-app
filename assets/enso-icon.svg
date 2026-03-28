@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a2a2a"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+    <linearGradient id="enso-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A8894E"/>
+      <stop offset="100%" stop-color="#D4BC8B"/>
+    </linearGradient>
+  </defs>
+  <!-- Hintergrund -->
+  <rect width="1024" height="1024" fill="url(#bg-grad)"/>
+  <!-- Enso Ring — stroke-dasharray/offset skaliert fuer r=369 (36% von 1024/2) -->
+  <!-- Original: r=36, dasharray=196 30, dashoffset=15 -->
+  <!-- Skalierung: 369/36 = 10.25x → dasharray=2009 307.5, dashoffset=153.75 -->
+  <circle cx="512" cy="512" r="369" fill="none"
+    stroke="url(#enso-grad)" stroke-width="82" stroke-linecap="round"
+    stroke-dasharray="2009 307.5" stroke-dashoffset="153.75"/>
+</svg>

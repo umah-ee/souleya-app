@@ -19,6 +19,7 @@
     "production": {
       "distribution": "store",
       "autoIncrement": true,
+      "channel": "production",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://web-production-5821e.up.railway.app",
         "EXPO_PUBLIC_SUPABASE_URL": "https://qxrjauhayppumggwobmi.supabase.co",
@@ -30,17 +31,17 @@
     "preview": {
       "ios": {
         "ascAppId": "6760158788",
-        "ascApiKeyPath": "../Apple/AuthKey_Y4B656AWZ6.p8",
+        "ascApiKeyPath": "../Apple/AuthKey_YS76X5X4LU.p8",
         "ascApiKeyIssuerId": "ea55b089-51f8-4ea2-8088-281c42bad2aa",
-        "ascApiKeyId": "Y4B656AWZ6"
+        "ascApiKeyId": "YS76X5X4LU"
       }
     },
     "production": {
       "ios": {
         "ascAppId": "6760158788",
-        "ascApiKeyPath": "../Apple/AuthKey_Y4B656AWZ6.p8",
+        "ascApiKeyPath": "../Apple/AuthKey_YS76X5X4LU.p8",
         "ascApiKeyIssuerId": "ea55b089-51f8-4ea2-8088-281c42bad2aa",
-        "ascApiKeyId": "Y4B656AWZ6"
+        "ascApiKeyId": "YS76X5X4LU"
       }
     }
   }

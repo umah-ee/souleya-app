@@ -52,8 +52,10 @@ function RootLayoutNav() {
   // Notifications Init/Cleanup bei Session-Wechsel
   useEffect(() => {
     if (session?.user?.id) {
+      console.log('[App] Notifications init fuer User:', session.user.id.substring(0, 8) + '...');
       initNotifications(session.user.id);
     } else {
+      console.log('[App] Notifications cleanup (kein User)');
       cleanupNotifications();
     }
     return () => cleanupNotifications();

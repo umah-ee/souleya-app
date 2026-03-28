@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  View, Text, TextInput, FlatList, TouchableOpacity,
-  StyleSheet, ActivityIndicator, Image, ScrollView,
+  View, Text, FlatList, TouchableOpacity, Share, Modal, Pressable,
+  StyleSheet, ActivityIndicator, Image, Animated, PanResponder, Dimensions, Platform,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth';
@@ -18,9 +19,10 @@ import type { Place } from '../../types/places';
 import { Icon } from '../../components/Icon';
 import CreatePlaceModal from '../../components/discover/CreatePlaceModal';
 import CreateEventModal from '../../components/CreateEventModal';
-import DiscoverMapView from '../../components/discover/DiscoverMapView';
-
-type Segment = 'alle' | 'mitglieder' | 'events' | 'orte';
+import DiscoverMapView, { type MapNearbyUser } from '../../components/discover/DiscoverMapView';
+import FloatingSearchBar from '../../components/discover/FloatingSearchBar';
+import FloatingSegmentTabs, { type DiscoverSegment } from '../../components/discover/FloatingSegmentTabs';
+import FloatingTagBar from '../../components/discover/FloatingTagBar';
 
 interface UserWithStatus extends UserSearchResult {
   connectionStatus: ConnectionStatus;
@@ -41,9 +43,9 @@ interface NearbyUser {
   connections_count: number;
 }
 
-// Muenchen als Standard
-const DEFAULT_LAT = 48.137;
-const DEFAULT_LNG = 11.576;
+const FALLBACK_LAT = 48.137;
+const FALLBACK_LNG = 11.576;
+const RADIUS = 25;
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
@@ -51,9 +53,94 @@ export default function DiscoverScreen() {
   const { session } = useAuthStore();
   const colors = useThemeStore((s) => s.colors);
   const userId = session?.user.id;
+  const SCREEN_H = Dimensions.get('window').height;
+
+  // ── GPS-Standort ─────────────────────────────────────
+  const [userLat, setUserLat] = useState(FALLBACK_LAT);
+  const [userLng, setUserLng] = useState(FALLBACK_LNG);
+  const [locationLoaded, setLocationLoaded] = useState(false);
+  const [locationName, setLocationName] = useState('');
+  const [locatingGPS, setLocatingGPS] = useState(false);
+
+  const fetchGPSLocation = useCallback(async () => {
+    setLocatingGPS(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        return;
+      }
+      // Timeout: Max 8 Sekunden warten auf GPS
+      const locPromise = Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+      const loc = await Promise.race([locPromise, timeoutPromise]);
+
+      if (loc && 'coords' in loc) {
+        setUserLat(loc.coords.latitude);
+        setUserLng(loc.coords.longitude);
+
+        // Reverse Geocoding fuer Ortsnamen
+        try {
+          const [geo] = await Location.reverseGeocodeAsync({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          });
+          if (geo) {
+            const name = geo.city ?? geo.subregion ?? geo.region ?? '';
+            setLocationName(name);
+          }
+        } catch {
+          // Reverse Geocoding fehlgeschlagen — kein Problem
+        }
+      }
+    } catch {
+      // GPS nicht verfuegbar — Fallback bleibt
+    } finally {
+      setLocationLoaded(true);
+      setLocatingGPS(false);
+    }
+  }, []);
+
+  // GPS starten, aber Daten auch ohne GPS nach 2s laden (Fallback)
+  useEffect(() => {
+    fetchGPSLocation();
+    // Safety: Auch ohne GPS nach 2 Sekunden locationLoaded setzen
+    const fallbackTimer = setTimeout(() => {
+      setLocationLoaded(true);
+    }, 2000);
+    return () => clearTimeout(fallbackTimer);
+  }, []);
+  const SNAP_LOW = SCREEN_H * 0.12;
+  const SNAP_MID = SCREEN_H * 0.45;
+  const SNAP_HIGH = SCREEN_H * 0.88;
+  const sheetY = useRef(new Animated.Value(SCREEN_H - SNAP_LOW)).current;
+  const lastSnap = useRef(SCREEN_H - SNAP_LOW);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 5,
+    onPanResponderMove: (_, g) => {
+      const newY = lastSnap.current + g.dy;
+      const clamped = Math.max(SCREEN_H - SNAP_HIGH, Math.min(SCREEN_H - SNAP_LOW, newY));
+      sheetY.setValue(clamped);
+    },
+    onPanResponderRelease: (_, g) => {
+      const currentY = lastSnap.current + g.dy;
+      const targets = [SCREEN_H - SNAP_HIGH, SCREEN_H - SNAP_MID, SCREEN_H - SNAP_LOW];
+      let closest = targets[0];
+      for (const t of targets) {
+        if (Math.abs(currentY - t) < Math.abs(currentY - closest)) closest = t;
+      }
+      // Wenn schneller Swipe nach oben/unten, snap in Richtung
+      if (g.vy < -0.5) closest = targets[0]; // hoch
+      else if (g.vy > 0.5) closest = targets[2]; // runter
+      lastSnap.current = closest;
+      Animated.spring(sheetY, { toValue: closest, useNativeDriver: false, tension: 80, friction: 12 }).start();
+    },
+  }), [SCREEN_H]);
 
   // ── Segment + Tags ─────────────────────────────────────
-  const [segment, setSegment] = useState<Segment>('alle');
+  const [segment, setSegment] = useState<DiscoverSegment>('alle');
   const [activeTags, setActiveTags] = useState<string[]>([]);
 
   // ── Suche ──────────────────────────────────────────────
@@ -67,28 +154,27 @@ export default function DiscoverScreen() {
   const [nearbyUsers, setNearbyUsers] = useState<NearbyUser[]>([]);
   const [events, setEvents] = useState<SoEvent[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
-  const [loadingNearby, setLoadingNearby] = useState(true);
-  const [loadingEvents, setLoadingEvents] = useState(true);
-  const [loadingPlaces, setLoadingPlaces] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [joiningEvent, setJoiningEvent] = useState<Record<string, boolean>>({});
   const [savingPlace, setSavingPlace] = useState<Record<string, boolean>>({});
   const [bookmarkingEvent, setBookmarkingEvent] = useState<Record<string, boolean>>({});
   const [showCreatePlace, setShowCreatePlace] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [selectedMapUser, setSelectedMapUser] = useState<NearbyUser | null>(null);
 
   const isSearchActive = query.trim().length >= 2;
 
-  // ── Profil-Vorlieben als initiale Tags laden ───────────
+  // ── Profil-Tags als initiale Filter ────────────────────
   const [tagsInitialized, setTagsInitialized] = useState(false);
+  const [userInterests, setUserInterests] = useState<string[]>([]);
   useEffect(() => {
     if (!userId || tagsInitialized) return;
     fetchProfile()
       .then((profile) => {
         const interests = profile.interests ?? [];
+        setUserInterests(interests);
         const matching = interests.filter((i: string) => PLACE_TAGS.includes(i));
-        if (matching.length > 0) {
-          setActiveTags(matching);
-        }
+        if (matching.length > 0) setActiveTags(matching);
         setTagsInitialized(true);
       })
       .catch(() => setTagsInitialized(true));
@@ -96,14 +182,12 @@ export default function DiscoverScreen() {
 
   // ── Daten laden ────────────────────────────────────────
   const loadDiscoverData = useCallback(async () => {
-    setLoadingNearby(true);
-    setLoadingEvents(true);
-    setLoadingPlaces(true);
+    setLoading(true);
     try {
       const [nearbyRes, eventsRes, placesRes] = await Promise.all([
-        fetchNearbyUsers(DEFAULT_LAT, DEFAULT_LNG),
-        fetchEvents({ lat: DEFAULT_LAT, lng: DEFAULT_LNG }),
-        fetchNearbyPlaces(DEFAULT_LAT, DEFAULT_LNG, undefined, activeTags.length > 0 ? activeTags : undefined),
+        fetchNearbyUsers(userLat, userLng, RADIUS),
+        fetchEvents({ lat: userLat, lng: userLng }),
+        fetchNearbyPlaces(userLat, userLng, RADIUS, activeTags.length > 0 ? activeTags : undefined),
       ]);
       setNearbyUsers(nearbyRes.data);
       setEvents(eventsRes.data);
@@ -111,15 +195,14 @@ export default function DiscoverScreen() {
     } catch (e) {
       console.error('Discover laden fehlgeschlagen:', e);
     } finally {
-      setLoadingNearby(false);
-      setLoadingEvents(false);
-      setLoadingPlaces(false);
+      setLoading(false);
     }
-  }, [activeTags]);
+  }, [activeTags, userLat, userLng]);
 
+  // Erst laden wenn GPS-Position bekannt
   useEffect(() => {
-    loadDiscoverData();
-  }, [loadDiscoverData]);
+    if (locationLoaded) loadDiscoverData();
+  }, [locationLoaded, loadDiscoverData]);
 
   // ── Tag Toggle ─────────────────────────────────────────
   const toggleTag = (tag: string) => {
@@ -130,11 +213,7 @@ export default function DiscoverScreen() {
 
   // ── User-Suche (Debounced) ─────────────────────────────
   const doSearch = useCallback(async (q: string) => {
-    if (q.length < 2) {
-      setSearchResults([]);
-      setSearched(false);
-      return;
-    }
+    if (q.length < 2) { setSearchResults([]); setSearched(false); return; }
     setSearching(true);
     setSearched(true);
     try {
@@ -150,11 +229,8 @@ export default function DiscoverScreen() {
         }),
       );
       setSearchResults(withStatus);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSearching(false);
-    }
+    } catch (e) { console.error(e); }
+    finally { setSearching(false); }
   }, []);
 
   useEffect(() => {
@@ -163,24 +239,19 @@ export default function DiscoverScreen() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, doSearch]);
 
-  // ── Verbinden ──────────────────────────────────────────
+  // ── Actions ────────────────────────────────────────────
   const handleConnect = async (user: UserWithStatus) => {
     try {
       await sendConnectionRequest(user.id);
-      setSearchResults((prev) =>
-        prev.map((u) => u.id === user.id ? { ...u, connectionStatus: 'pending_outgoing' } : u),
-      );
+      setSearchResults((prev) => prev.map((u) => u.id === user.id ? { ...u, connectionStatus: 'pending_outgoing' } : u));
     } catch (e) { console.error(e); }
   };
 
-  // ── Event beitreten/verlassen ──────────────────────────
   const handleJoinEvent = async (eventId: string) => {
     setJoiningEvent((s) => ({ ...s, [eventId]: true }));
     try {
       const res = await joinEvent(eventId);
-      setEvents((prev) =>
-        prev.map((e) => e.id === eventId ? { ...e, has_joined: true, participants_count: res.participants_count } : e),
-      );
+      setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, has_joined: true, participants_count: res.participants_count } : e));
     } catch (e) { console.error(e); }
     finally { setJoiningEvent((s) => ({ ...s, [eventId]: false })); }
   };
@@ -189,58 +260,49 @@ export default function DiscoverScreen() {
     setJoiningEvent((s) => ({ ...s, [eventId]: true }));
     try {
       const res = await leaveEvent(eventId);
-      setEvents((prev) =>
-        prev.map((e) => e.id === eventId ? { ...e, has_joined: false, participants_count: res.participants_count } : e),
-      );
+      setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, has_joined: false, participants_count: res.participants_count } : e));
     } catch (e) { console.error(e); }
     finally { setJoiningEvent((s) => ({ ...s, [eventId]: false })); }
   };
 
-  // ── Place speichern ────────────────────────────────────
   const handleSavePlace = async (placeId: string) => {
     setSavingPlace((s) => ({ ...s, [placeId]: true }));
-    try {
-      await savePlace(placeId);
-      setPlaces((prev) => prev.map((p) => p.id === placeId ? { ...p, is_saved: true } : p));
-    } catch (e) { console.error(e); }
+    try { await savePlace(placeId); setPlaces((prev) => prev.map((p) => p.id === placeId ? { ...p, is_saved: true } : p)); }
+    catch (e) { console.error(e); }
     finally { setSavingPlace((s) => ({ ...s, [placeId]: false })); }
   };
 
   const handleUnsavePlace = async (placeId: string) => {
     setSavingPlace((s) => ({ ...s, [placeId]: true }));
-    try {
-      await unsavePlace(placeId);
-      setPlaces((prev) => prev.map((p) => p.id === placeId ? { ...p, is_saved: false } : p));
-    } catch (e) { console.error(e); }
+    try { await unsavePlace(placeId); setPlaces((prev) => prev.map((p) => p.id === placeId ? { ...p, is_saved: false } : p)); }
+    catch (e) { console.error(e); }
     finally { setSavingPlace((s) => ({ ...s, [placeId]: false })); }
   };
 
-  // ── Event bookmarken ──────────────────────────────────
   const handleBookmarkEvent = async (eventId: string) => {
     setBookmarkingEvent((s) => ({ ...s, [eventId]: true }));
-    // Optimistisch aktualisieren
     setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, is_bookmarked: true } : e));
-    try {
-      await bookmarkEvent(eventId);
-    } catch (err) {
-      // Rollback bei Fehler
-      setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, is_bookmarked: false } : e));
-      console.error(err);
-    } finally {
-      setBookmarkingEvent((s) => ({ ...s, [eventId]: false }));
-    }
+    try { await bookmarkEvent(eventId); }
+    catch { setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, is_bookmarked: false } : e)); }
+    finally { setBookmarkingEvent((s) => ({ ...s, [eventId]: false })); }
   };
 
   const handleUnbookmarkEvent = async (eventId: string) => {
     setBookmarkingEvent((s) => ({ ...s, [eventId]: true }));
     setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, is_bookmarked: false } : e));
+    try { await unbookmarkEvent(eventId); }
+    catch { setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, is_bookmarked: true } : e)); }
+    finally { setBookmarkingEvent((s) => ({ ...s, [eventId]: false })); }
+  };
+
+  const handleShareEvent = async (event: SoEvent) => {
     try {
-      await unbookmarkEvent(eventId);
-    } catch (err) {
-      setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, is_bookmarked: true } : e));
-      console.error(err);
-    } finally {
-      setBookmarkingEvent((s) => ({ ...s, [eventId]: false }));
+      await Share.share({
+        message: `${event.title} auf Souleya entdecken!`,
+        url: `https://souleya.com/discover`,
+      });
+    } catch {
+      // Abgebrochen
     }
   };
 
@@ -261,50 +323,151 @@ export default function DiscoverScreen() {
     return `${day} · ${time}`;
   };
 
-  const renderStars = (rating: number) => {
-    const stars = [];
-    for (let i = 1; i <= 5; i++) {
-      stars.push(
-        <Icon key={i} name={i <= Math.round(rating) ? 'star-filled' : 'star'} size={12} color={i <= Math.round(rating) ? colors.gold : colors.textMuted} />,
-      );
-    }
-    return stars;
-  };
+  // ── Bottom Sheet Items ─────────────────────────────────
+  const bottomSheetItems = useMemo(() => {
+    if (segment === 'mitglieder') return nearbyUsers.map((u) => ({ ...u, _type: 'user' as const }));
+    if (segment === 'events') return events.map((e) => ({ ...e, _type: 'event' as const }));
+    if (segment === 'orte') return places.map((p) => ({ ...p, _type: 'place' as const }));
+    // 'alle' — gemischt
+    return [
+      ...nearbyUsers.slice(0, 5).map((u) => ({ ...u, _type: 'user' as const })),
+      ...events.slice(0, 5).map((e) => ({ ...e, _type: 'event' as const })),
+      ...places.slice(0, 5).map((p) => ({ ...p, _type: 'place' as const })),
+    ];
+  }, [segment, nearbyUsers, events, places]);
 
-  // ── Renderers ──────────────────────────────────────────
-  const renderSearchUser = ({ item }: { item: UserWithStatus }) => {
-    const name = item.display_name ?? item.username ?? 'Anonym';
-    const initial = name.slice(0, 1).toUpperCase();
-    const isMe = item.id === userId;
-    return (
-      <View style={[styles.card, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
-        <View style={[styles.avatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }, item.is_first_light && { borderColor: colors.goldBorder }]}>
-          {item.avatar_url ? (
-            <Image source={{ uri: item.avatar_url }} style={styles.avatarImg} />
-          ) : (
-            <Text style={[styles.avatarText, { color: colors.goldDeep }]}>{initial}</Text>
-          )}
-        </View>
-        <View style={styles.cardInfo}>
-          <View style={styles.nameRow}>
-            <Text style={[styles.cardName, { color: colors.textH }]} numberOfLines={1}>{name}</Text>
-            {item.is_first_light && (
-              <View style={[styles.firstLightBadge, { borderColor: colors.goldBorder, backgroundColor: colors.goldBg }]}>
-                <Text style={[styles.firstLightBadgeText, { color: colors.goldDeep }]}>FIRST LIGHT</Text>
+  const resultCount = segment === 'alle'
+    ? nearbyUsers.length + events.length + places.length
+    : bottomSheetItems.length;
+
+  // ── Map Users ──────────────────────────────────────────
+  const mapUsers: MapNearbyUser[] = nearbyUsers.map((u) => ({
+    id: u.id, display_name: u.display_name, username: u.username,
+    avatar_url: u.avatar_url, location_lat: u.location_lat,
+    location_lng: u.location_lng, is_first_light: u.is_first_light,
+  }));
+
+  // ── Render Bottom Sheet Item ───────────────────────────
+  const renderBottomSheetItem = ({ item }: { item: any }) => {
+    if (item._type === 'user') {
+      const name = item.display_name ?? item.username ?? 'Anonym';
+      return (
+        <TouchableOpacity style={[styles.bsCard, { borderColor: colors.divider }]} activeOpacity={0.7}>
+          <View style={[styles.bsAvatar, { backgroundColor: '#A8894E' }]}>
+            {item.avatar_url ? (
+              <Image source={{ uri: item.avatar_url }} style={styles.bsAvatarImg} />
+            ) : (
+              <Text style={styles.bsAvatarText}>{name.slice(0, 1).toUpperCase()}</Text>
+            )}
+          </View>
+          <View style={styles.bsCardInfo}>
+            <Text style={[styles.bsCardName, { color: colors.textH }]} numberOfLines={1}>{name}</Text>
+            {item.location && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <Icon name="map-pin" size={10} color={colors.textMuted} />
+                <Text style={[styles.bsCardSub, { color: colors.textMuted }]} numberOfLines={1}>{item.location}</Text>
               </View>
             )}
           </View>
-          {item.username && <Text style={[styles.cardHandle, { color: colors.textSec }]}>@{item.username}</Text>}
-          {item.bio && <Text style={[styles.cardBio, { color: colors.textMuted }]} numberOfLines={1}>{item.bio}</Text>}
+          {item.is_first_light && (
+            <View style={[styles.flBadge, { borderColor: colors.gold, backgroundColor: `${colors.gold}18` }]}>
+              <Text style={[styles.flBadgeText, { color: colors.gold }]}>FL</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      );
+    }
+
+    if (item._type === 'event') {
+      return (
+        <TouchableOpacity style={[styles.bsCard, { borderColor: colors.divider }]} activeOpacity={0.7}>
+          <View style={[styles.bsIconCircle, { backgroundColor: '#8B5CF6' }]}>
+            <Icon name="calendar-event" size={16} color="#fff" />
+          </View>
+          <View style={styles.bsCardInfo}>
+            <Text style={[styles.bsCardName, { color: colors.textH }]} numberOfLines={1}>{item.title}</Text>
+            <Text style={[styles.bsCardSub, { color: colors.textMuted }]}>{formatEventDate(item.starts_at)}</Text>
+          </View>
+          <TouchableOpacity onPress={() => handleShareEvent(item)} hitSlop={8}>
+            <Icon name="share" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => item.is_bookmarked ? handleUnbookmarkEvent(item.id) : handleBookmarkEvent(item.id)}
+            disabled={bookmarkingEvent[item.id]}
+            hitSlop={8}
+          >
+            <Icon
+              name={item.is_bookmarked ? 'bookmark-filled' : 'bookmark'}
+              size={18}
+              color={item.is_bookmarked ? colors.gold : colors.textMuted}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => item.has_joined ? handleLeaveEvent(item.id) : handleJoinEvent(item.id)}
+            disabled={joiningEvent[item.id]}
+            style={[styles.bsAction, { borderColor: colors.gold }]}
+          >
+            <Text style={[styles.bsActionText, { color: colors.gold }]}>
+              {item.has_joined ? 'Dabei' : 'Teilnehmen'}
+            </Text>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      );
+    }
+
+    if (item._type === 'place') {
+      return (
+        <TouchableOpacity
+          style={[styles.bsCard, { borderColor: colors.divider }]}
+          onPress={() => router.push(`/places/${item.id}` as any)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.bsIconCircle, { backgroundColor: colors.gold }]}>
+            <Icon name="map-pin" size={16} color="#fff" />
+          </View>
+          <View style={styles.bsCardInfo}>
+            <Text style={[styles.bsCardName, { color: colors.textH }]} numberOfLines={1}>{item.name}</Text>
+            <Text style={[styles.bsCardSub, { color: colors.textMuted }]} numberOfLines={1}>
+              {item.address ?? item.city ?? ''}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => item.is_saved ? handleUnsavePlace(item.id) : handleSavePlace(item.id)}
+            hitSlop={8}
+          >
+            <Icon name={item.is_saved ? 'bookmark-filled' : 'bookmark'} size={18} color={item.is_saved ? colors.gold : colors.textMuted} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      );
+    }
+
+    return null;
+  };
+
+  // ── Search Result Item ─────────────────────────────────
+  const renderSearchUser = ({ item }: { item: UserWithStatus }) => {
+    const name = item.display_name ?? item.username ?? 'Anonym';
+    const isMe = item.id === userId;
+    return (
+      <View style={[styles.bsCard, { borderColor: colors.divider }]}>
+        <View style={[styles.bsAvatar, { backgroundColor: '#A8894E' }]}>
+          {item.avatar_url ? (
+            <Image source={{ uri: item.avatar_url }} style={styles.bsAvatarImg} />
+          ) : (
+            <Text style={styles.bsAvatarText}>{name.slice(0, 1).toUpperCase()}</Text>
+          )}
+        </View>
+        <View style={styles.bsCardInfo}>
+          <Text style={[styles.bsCardName, { color: colors.textH }]} numberOfLines={1}>{name}</Text>
+          {item.username && <Text style={[styles.bsCardSub, { color: colors.textMuted }]}>@{item.username}</Text>}
         </View>
         {!isMe && (
           <TouchableOpacity
-            style={[styles.actionBtn, { borderColor: colors.goldBorder }, item.connectionStatus === 'connected' && { borderColor: `${colors.success}44`, backgroundColor: `${colors.success}14` }, item.connectionStatus === 'pending_outgoing' && { borderColor: colors.goldBorderS }]}
+            style={[styles.bsAction, { borderColor: colors.gold }, item.connectionStatus !== 'none' && { borderColor: colors.divider }]}
             onPress={() => item.connectionStatus === 'none' && handleConnect(item)}
             disabled={item.connectionStatus !== 'none'}
-            activeOpacity={0.7}
           >
-            <Text style={[styles.actionBtnText, { color: colors.goldDeep }, item.connectionStatus !== 'none' && { color: colors.textMuted }]}>
+            <Text style={[styles.bsActionText, { color: item.connectionStatus === 'none' ? colors.gold : colors.textMuted }]}>
               {getStatusLabel(item.connectionStatus)}
             </Text>
           </TouchableOpacity>
@@ -313,388 +476,293 @@ export default function DiscoverScreen() {
     );
   };
 
-  const renderNearbyUser = ({ item }: { item: NearbyUser }) => {
-    const name = item.display_name ?? item.username ?? 'Anonym';
-    const initial = name.slice(0, 1).toUpperCase();
-    return (
-      <View style={[styles.card, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
-        <View style={[styles.avatar, { backgroundColor: colors.avatarBg, borderColor: colors.goldBorderS }, item.is_first_light && { borderColor: colors.goldBorder }]}>
-          {item.avatar_url ? (
-            <Image source={{ uri: item.avatar_url }} style={styles.avatarImg} />
-          ) : (
-            <Text style={[styles.avatarText, { color: colors.goldDeep }]}>{initial}</Text>
-          )}
-        </View>
-        <View style={styles.cardInfo}>
-          <View style={styles.nameRow}>
-            <Text style={[styles.cardName, { color: colors.textH }]} numberOfLines={1}>{name}</Text>
-            {item.is_first_light && (
-              <View style={[styles.firstLightBadge, { borderColor: colors.goldBorder, backgroundColor: colors.goldBg }]}>
-                <Text style={[styles.firstLightBadgeText, { color: colors.goldDeep }]}>FIRST LIGHT</Text>
-              </View>
-            )}
-          </View>
-          {item.username && <Text style={[styles.cardHandle, { color: colors.textSec }]}>@{item.username}</Text>}
-          {item.location && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-              <Icon name="map-pin" size={11} color={colors.textMuted} />
-              <Text style={[styles.cardMeta, { color: colors.textMuted }]}>{item.location}</Text>
-            </View>
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  const renderEvent = ({ item }: { item: SoEvent }) => {
-    const creatorName = item.creator?.display_name ?? item.creator?.username ?? 'Anonym';
-    const isCreator = userId === item.creator_id;
-    const isFull = item.max_participants != null && item.participants_count >= item.max_participants;
-    const isJoining = joiningEvent[item.id];
-    const isBookmarking = bookmarkingEvent[item.id];
-    return (
-      <View style={[styles.eventCard, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}>
-        <View style={styles.eventHeader}>
-          <View style={[styles.categoryBadge, { borderColor: colors.goldBorder, backgroundColor: colors.goldBg }]}>
-            <Text style={[styles.categoryText, { color: colors.goldDeep }]}>{item.category === 'course' ? 'KURS' : 'MEETUP'}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={[styles.eventDate, { color: colors.textMuted }]}>{formatEventDate(item.starts_at)}</Text>
-            {userId && (
-              <TouchableOpacity
-                onPress={() => item.is_bookmarked ? handleUnbookmarkEvent(item.id) : handleBookmarkEvent(item.id)}
-                disabled={isBookmarking}
-                activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Icon
-                  name={item.is_bookmarked ? 'bookmark-filled' : 'bookmark'}
-                  size={18}
-                  color={item.is_bookmarked ? colors.gold : colors.textMuted}
-                />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-        <Text style={[styles.eventTitle, { color: colors.textH }]}>{item.title}</Text>
-        {item.description && <Text style={[styles.eventDesc, { color: colors.textSec }]} numberOfLines={2}>{item.description}</Text>}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 }}>
-          <Icon name="map-pin" size={11} color={colors.textMuted} />
-          <Text style={[styles.eventLocation, { color: colors.textMuted }]}>{item.location_name}</Text>
-        </View>
-        <View style={[styles.eventFooter, { borderTopColor: colors.divider }]}>
-          <View style={styles.eventCreator}>
-            <Text style={[styles.eventCreatorName, { color: colors.textSec }]}>{creatorName}</Text>
-            <Text style={{ fontSize: 11, color: colors.divider }}>·</Text>
-            <Text style={{ fontSize: 11, color: colors.textMuted }}>
-              {item.participants_count}{item.max_participants ? `/${item.max_participants}` : ''} Teilnehmer
-            </Text>
-          </View>
-          {userId && !isCreator && (
-            <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: colors.goldBorder }, item.has_joined && { borderColor: colors.goldBorderS }, isFull && !item.has_joined && { borderColor: colors.goldBorderS, backgroundColor: colors.goldBg }]}
-              onPress={() => item.has_joined ? handleLeaveEvent(item.id) : handleJoinEvent(item.id)}
-              disabled={isJoining || (isFull && !item.has_joined)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.actionBtnText, { color: colors.goldDeep }, item.has_joined && { color: colors.textMuted }]}>
-                {isJoining ? '...' : item.has_joined ? 'VERLASSEN' : isFull ? 'VOLL' : 'TEILNEHMEN'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  const renderPlace = ({ item }: { item: Place }) => {
-    const saving = savingPlace[item.id];
-    return (
-      <TouchableOpacity
-        style={[styles.eventCard, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}
-        onPress={() => router.push(`/places/${item.id}` as any)}
-        activeOpacity={0.7}
-      >
-        {item.cover_url && <Image source={{ uri: item.cover_url }} style={styles.placeCover} />}
-        {item.tags && item.tags.length > 0 && (
-          <View style={styles.tagsRow}>
-            {item.tags.slice(0, 3).map((tag) => (
-              <View key={tag} style={[styles.tagBadge, { backgroundColor: colors.goldBg, borderColor: colors.goldBorderS }]}>
-                <Text style={[styles.tagText, { color: colors.goldDeep }]}>{tag}</Text>
-              </View>
-            ))}
-            {item.tags.length > 3 && <Text style={[styles.tagMore, { color: colors.textMuted }]}>+{item.tags.length - 3}</Text>}
-          </View>
-        )}
-        <Text style={[styles.eventTitle, { color: colors.textH }]}>{item.name}</Text>
-        <View style={styles.ratingRow}>
-          {renderStars(item.avg_rating)}
-          <Text style={[styles.ratingText, { color: colors.textSec }]}>{item.avg_rating > 0 ? item.avg_rating.toFixed(1) : '—'}</Text>
-          <Text style={[styles.ratingCount, { color: colors.textMuted }]}>({item.reviews_count})</Text>
-        </View>
-        {(item.address || item.city) && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 }}>
-            <Icon name="map-pin" size={11} color={colors.textMuted} />
-            <Text style={{ fontSize: 11, color: colors.textMuted }} numberOfLines={1}>{item.address ?? item.city}</Text>
-          </View>
-        )}
-        <View style={[styles.placeFooter, { borderTopColor: colors.divider }]}>
-          <Text style={{ fontSize: 11, color: colors.textMuted }}>{item.saves_count} gespeichert</Text>
-          <TouchableOpacity onPress={() => item.is_saved ? handleUnsavePlace(item.id) : handleSavePlace(item.id)} disabled={saving} activeOpacity={0.7}>
-            <Icon name={item.is_saved ? 'bookmark-filled' : 'bookmark'} size={18} color={item.is_saved ? colors.gold : colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  // ── Segment Config ─────────────────────────────────────
-  const SEGMENTS: { key: Segment; label: string; icon: 'map' | 'users' | 'compass' | 'building' }[] = [
-    { key: 'alle', label: 'Alle', icon: 'map' },
-    { key: 'mitglieder', label: 'Mitglieder', icon: 'users' },
-    { key: 'events', label: 'Events', icon: 'compass' },
-    { key: 'orte', label: 'Orte', icon: 'building' },
-  ];
-
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.bgGradientStart }]}>
+    <View style={styles.container}>
       {/* Fullscreen Karte */}
-      <View style={StyleSheet.absoluteFill}>
-        <DiscoverMapView
-          users={nearbyUsers.map((u) => ({
-            id: u.id,
-            display_name: u.display_name,
-            username: u.username,
-            avatar_url: u.avatar_url,
-            location_lat: u.location_lat,
-            location_lng: u.location_lng,
-            is_first_light: u.is_first_light,
-          }))}
-          events={events.filter((e) => e.location_lat && e.location_lng)}
-          places={places.filter((p) => p.location_lat && p.location_lng)}
-          center={[DEFAULT_LNG, DEFAULT_LAT]}
-          onRegionChange={(c) => {
-            // Spaeter: Daten fuer neue Region laden
-          }}
-          onUserPress={(user) => {
-            // Spaeter: ProfileModal oeffnen
-          }}
-          onEventPress={(event) => {
-            // Spaeter: Event-Detail oeffnen
-          }}
-          onPlacePress={(place) => {
-            router.push(`/places/${place.id}` as any);
-          }}
+      <DiscoverMapView
+        users={mapUsers}
+        events={events.filter((e) => e.location_lat && e.location_lng)}
+        places={places.filter((p) => p.location_lat && p.location_lng)}
+        center={[userLng, userLat]}
+        onRegionChange={() => {}}
+        onUserPress={(mapUser) => {
+          const full = nearbyUsers.find((u) => u.id === mapUser.id) ?? {
+            id: mapUser.id,
+            username: mapUser.username,
+            display_name: mapUser.display_name,
+            avatar_url: mapUser.avatar_url,
+            bio: null,
+            location: null,
+            location_lat: mapUser.location_lat,
+            location_lng: mapUser.location_lng,
+            soul_level: 1,
+            is_first_light: mapUser.is_first_light,
+            connections_count: 0,
+          };
+          setSelectedMapUser(full);
+        }}
+        onEventPress={() => {}}
+        onPlacePress={(place) => router.push(`/places/${place.id}` as any)}
+      />
+
+      {/* Floating Controls ueber der Karte */}
+      <View style={styles.floatingControls} pointerEvents="box-none">
+        <FloatingSearchBar
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Souls suchen …"
+          locationName={locationName}
+          onGPSPress={fetchGPSLocation}
+          locatingGPS={locatingGPS}
         />
-      </View>
 
-      {/* Floating Header */}
-      <View style={[styles.floatingHeader, { paddingTop: insets.top + 12, backgroundColor: `${colors.bgGradientStart}DD` }]}>
-        <View style={styles.headerRow}>
-          <Icon name="compass" size={22} color={colors.goldDeep} />
-          <Text style={[styles.headerTitle, { color: colors.goldDeep }]}>DISCOVER</Text>
-        </View>
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={[styles.searchInput, { backgroundColor: colors.glass, borderColor: colors.glassBorder, color: colors.textH }]}
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Souls suchen ..."
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </View>
-
-        {/* Segment Toggle */}
         {!isSearchActive && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.segmentRow}>
-            {SEGMENTS.map((seg) => (
-              <TouchableOpacity
-                key={seg.key}
-                style={[styles.segmentBtn, { backgroundColor: colors.glass, borderColor: colors.glassBorder }, segment === seg.key && { backgroundColor: colors.goldBg, borderColor: colors.goldBorder }]}
-                onPress={() => setSegment(seg.key)}
-                activeOpacity={0.7}
-              >
-                <Icon name={seg.icon} size={12} color={segment === seg.key ? colors.goldDeep : colors.textMuted} />
-                <Text style={[styles.segmentText, { color: colors.textMuted }, segment === seg.key && { color: colors.goldDeep }]}>
-                  {seg.label}
-                  {seg.key === 'mitglieder' && nearbyUsers.length > 0 ? ` (${nearbyUsers.length})` : ''}
-                  {seg.key === 'events' && events.length > 0 ? ` (${events.length})` : ''}
-                  {seg.key === 'orte' && places.length > 0 ? ` (${places.length})` : ''}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* Tag Filter */}
-        {!isSearchActive && (segment === 'orte' || segment === 'alle') && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagsFilterRow}>
-            {PLACE_TAGS.slice(0, 15).map((tag) => (
-              <TouchableOpacity
-                key={tag}
-                style={[styles.tagFilterBtn, { borderWidth: 0, backgroundColor: colors.glass }, activeTags.includes(tag) && { backgroundColor: colors.gold, borderWidth: 1, borderColor: colors.gold }]}
-                onPress={() => toggleTag(tag)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.tagFilterText, { color: colors.textSec || colors.textMuted }, activeTags.includes(tag) && { color: colors.textOnGold }]}>{tag}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <>
+            <FloatingSegmentTabs
+              active={segment}
+              onChange={setSegment}
+              counts={{
+                mitglieder: nearbyUsers.length,
+                events: events.length,
+                orte: places.length,
+              }}
+            />
+            {(segment === 'alle' || segment === 'orte') && (
+              <FloatingTagBar
+                tags={PLACE_TAGS.slice(0, 20)}
+                activeTags={activeTags}
+                userInterests={userInterests}
+                onToggle={toggleTag}
+              />
+            )}
+          </>
         )}
       </View>
 
-      {/* Suche */}
-      {isSearchActive ? (
-        <View style={[styles.searchOverlay, { paddingTop: insets.top + 100, backgroundColor: colors.bgGradientStart }]}>
+      {/* Suche-Overlay */}
+      {isSearchActive && (
+        <View style={[styles.searchOverlay, { backgroundColor: colors.bgSolid }]}>
           {searching ? (
-            <View style={styles.center}><ActivityIndicator color={colors.goldText} /></View>
+            <View style={styles.center}><ActivityIndicator color={colors.gold} /></View>
           ) : searchResults.length === 0 && searched ? (
             <View style={styles.center}>
-              <Text style={[styles.hintTitle, { color: colors.goldDeep }]}>Keine Ergebnisse</Text>
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>Versuche einen anderen Suchbegriff.</Text>
+              <Icon name="search" size={32} color={colors.textMuted} />
+              <Text style={[styles.emptyText, { color: colors.textMuted, marginTop: 8 }]}>Keine Ergebnisse</Text>
             </View>
           ) : (
-            <FlatList data={searchResults} keyExtractor={(item) => item.id} renderItem={renderSearchUser} contentContainerStyle={styles.listContent} />
-          )}
-        </View>
-      ) : segment === 'alle' ? null : (
-        <View style={[styles.bottomPanel, { backgroundColor: `${colors.bgGradientStart}EE` }]}>
-          {segment === 'mitglieder' && (
-            loadingNearby ? <View style={styles.centerSmall}><ActivityIndicator color={colors.goldText} /></View>
-            : nearbyUsers.length === 0 ? (
-              <View style={styles.centerSmall}>
-                <Text style={[styles.hintTitle, { color: colors.goldDeep }]}>Keine Souls in der Naehe</Text>
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>Setze deinen Standort im Profil.</Text>
-              </View>
-            ) : <FlatList data={nearbyUsers} keyExtractor={(item) => item.id} renderItem={renderNearbyUser} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} />
-          )}
-          {segment === 'events' && (
-            loadingEvents ? <View style={styles.centerSmall}><ActivityIndicator color={colors.goldText} /></View>
-            : events.length === 0 ? (
-              <View style={styles.centerSmall}>
-                <Text style={[styles.hintTitle, { color: colors.goldDeep }]}>Keine Events in der Naehe</Text>
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>Erstelle ein Meetup oder Kurs.</Text>
-              </View>
-            ) : <FlatList data={events} keyExtractor={(item) => item.id} renderItem={renderEvent} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} />
-          )}
-          {segment === 'orte' && (
-            loadingPlaces ? <View style={styles.centerSmall}><ActivityIndicator color={colors.goldText} /></View>
-            : places.length === 0 ? (
-              <View style={styles.centerSmall}>
-                <Text style={[styles.hintTitle, { color: colors.goldDeep }]}>Keine Soul Places</Text>
-                <Text style={[styles.emptyText, { color: colors.textMuted }]}>In dieser Gegend gibt es noch keine Orte.</Text>
-              </View>
-            ) : <FlatList data={places} keyExtractor={(item) => item.id} renderItem={renderPlace} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false} />
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => item.id}
+              renderItem={renderSearchUser}
+              contentContainerStyle={styles.listContent}
+            />
           )}
         </View>
       )}
 
-      {/* FAB – Event oder Place erstellen */}
+      {/* Bottom Sheet (custom, kein @gorhom/bottom-sheet) */}
+      {!isSearchActive && (
+        <Animated.View
+          style={[styles.bottomSheet, { backgroundColor: colors.bgSolid, top: sheetY }]}
+        >
+          {/* Drag Handle */}
+          <View {...panResponder.panHandlers} style={styles.bsDragArea}>
+            <View style={[styles.bsDragHandle, { backgroundColor: colors.textMuted }]} />
+            <Text style={[styles.bsHeaderText, { color: colors.textSec }]}>
+              {loading ? 'Laden …' : `${resultCount} Ergebnis${resultCount !== 1 ? 'se' : ''} in ${RADIUS} km`}
+            </Text>
+          </View>
+
+          {/* Liste */}
+          <FlatList
+            data={bottomSheetItems}
+            keyExtractor={(item: any) => `${item._type}-${item.id}`}
+            renderItem={renderBottomSheetItem}
+            contentContainerStyle={styles.bsListContent}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              !loading ? (
+                <View style={styles.centerSmall}>
+                  <Icon name="compass" size={32} color={colors.textMuted} />
+                  <Text style={[styles.emptyText, { color: colors.textMuted, marginTop: 8 }]}>
+                    {segment === 'mitglieder' ? 'Keine Souls in der Naehe' :
+                     segment === 'events' ? 'Keine Events in der Naehe' :
+                     segment === 'orte' ? 'Keine Soul Places' : 'Noch nichts entdeckt'}
+                  </Text>
+                </View>
+              ) : null
+            }
+          />
+        </Animated.View>
+      )}
+
+      {/* FAB */}
       {userId && (segment === 'orte' || segment === 'events') && !isSearchActive && (
         <TouchableOpacity
           style={styles.fab}
           onPress={() => segment === 'orte' ? setShowCreatePlace(true) : setShowCreateEvent(true)}
           activeOpacity={0.8}
         >
-          <Icon name={segment === 'orte' ? 'map-pin' : 'plus'} size={22} color="#fff" />
+          <Icon name="plus" size={22} color="#fff" />
         </TouchableOpacity>
       )}
 
-      {/* CreatePlaceModal */}
+      {/* Modals */}
       <CreatePlaceModal
         visible={showCreatePlace}
         onClose={() => setShowCreatePlace(false)}
-        onCreated={() => {
-          setShowCreatePlace(false);
-          loadDiscoverData();
-        }}
+        onCreated={() => { setShowCreatePlace(false); loadDiscoverData(); }}
       />
-
-      {/* CreateEventModal */}
       <CreateEventModal
         visible={showCreateEvent}
         onClose={() => setShowCreateEvent(false)}
-        onCreated={() => {
-          setShowCreateEvent(false);
-          loadDiscoverData();
-        }}
+        onCreated={() => { setShowCreateEvent(false); loadDiscoverData(); }}
       />
+
+      {/* Map User Profilkarte */}
+      {selectedMapUser && (
+        <Modal transparent animationType="slide" onRequestClose={() => setSelectedMapUser(null)}>
+          <Pressable style={styles.mapUserOverlay} onPress={() => setSelectedMapUser(null)}>
+            <Pressable style={[styles.mapUserSheet, { backgroundColor: colors.bgSolid, borderColor: colors.glassBorder }]} onPress={() => {}}>
+              {/* Drag Handle */}
+              <View style={styles.mapUserHandleBar}>
+                <View style={[styles.mapUserDrag, { backgroundColor: colors.divider }]} />
+              </View>
+
+              {/* Avatar + Name */}
+              <View style={styles.mapUserHeader}>
+                <View style={[styles.mapUserAvatar, { backgroundColor: colors.avatarBg }]}>
+                  {selectedMapUser.avatar_url ? (
+                    <Image source={{ uri: selectedMapUser.avatar_url }} style={styles.mapUserAvatarImg} />
+                  ) : (
+                    <Text style={[styles.mapUserInitials, { color: colors.gold }]}>
+                      {(selectedMapUser.display_name ?? selectedMapUser.username ?? '?').slice(0, 1).toUpperCase()}
+                    </Text>
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.mapUserName, { color: colors.textH }]}>
+                    {selectedMapUser.display_name ?? selectedMapUser.username ?? 'Soul'}
+                  </Text>
+                  {selectedMapUser.username && (
+                    <Text style={[styles.mapUserUsername, { color: colors.textMuted }]}>@{selectedMapUser.username}</Text>
+                  )}
+                  {selectedMapUser.is_first_light && (
+                    <Text style={[styles.mapUserFL, { color: colors.gold }]}>✦ First Light</Text>
+                  )}
+                </View>
+              </View>
+
+              {/* Bio */}
+              {selectedMapUser.bio ? (
+                <Text style={[styles.mapUserBio, { color: colors.textSec }]} numberOfLines={3}>
+                  {selectedMapUser.bio}
+                </Text>
+              ) : null}
+
+              {/* Schliessen */}
+              <TouchableOpacity
+                style={[styles.mapUserCloseBtn, { backgroundColor: colors.glass, borderColor: colors.glassBorder }]}
+                onPress={() => setSelectedMapUser(null)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.mapUserCloseTxt, { color: colors.textSec }]}>Schließen</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-  centerSmall: { paddingVertical: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-  mapFull: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  mapPlaceholderText: { fontSize: 12, letterSpacing: 1 },
-  floatingHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, paddingBottom: 4 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingBottom: 8 },
-  headerTitle: { fontSize: 11, letterSpacing: 4 },
-  searchContainer: { paddingHorizontal: 16, paddingBottom: 8 },
-  searchInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14 },
-  searchOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 5 },
-  bottomPanel: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '55%',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 16, zIndex: 5,
-    shadowColor: '#000', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 8,
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+
+  // Floating Controls
+  floatingControls: {
+    position: 'absolute', top: 8, left: 0, right: 0, zIndex: 10,
+    gap: 6, paddingHorizontal: 16,
   },
-  segmentRow: { paddingHorizontal: 16, gap: 6, paddingBottom: 8 },
-  segmentBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
-  segmentText: { fontSize: 10, letterSpacing: 0.8 },
-  tagsFilterRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 8 },
-  tagFilterBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99, borderWidth: 1 },
-  tagFilterText: { fontSize: 11, letterSpacing: 0.3 },
-  listContent: { paddingHorizontal: 16, paddingBottom: 16 },
-  hintTitle: { fontSize: 20, fontWeight: '400', marginBottom: 8, letterSpacing: 1 },
+
+  // Search Overlay
+  searchOverlay: {
+    position: 'absolute', top: 60, left: 0, right: 0, bottom: 0, zIndex: 15,
+  },
+  listContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
   emptyText: { fontSize: 13, textAlign: 'center' },
-  card: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, padding: 14,
-    marginBottom: 10, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
+
+  // Bottom Sheet (custom Animated)
+  bottomSheet: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    height: '100%', // top wird via Animated.Value gesteuert
+    borderTopLeftRadius: 16, borderTopRightRadius: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 10,
   },
-  avatar: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  avatarImg: { width: 44, height: 44, borderRadius: 22 },
-  avatarText: { fontSize: 17, fontWeight: '400' },
-  cardInfo: { flex: 1 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  cardName: { fontSize: 14, fontWeight: '500' },
-  cardHandle: { fontSize: 12, marginTop: 1 },
-  cardBio: { fontSize: 12, marginTop: 2 },
-  cardMeta: { fontSize: 11, marginTop: 2 },
-  firstLightBadge: { paddingHorizontal: 5, paddingVertical: 1, borderRadius: 99, borderWidth: 1 },
-  firstLightBadgeText: { fontSize: 7, letterSpacing: 2 },
-  actionBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, borderWidth: 1 },
-  actionBtnText: { fontSize: 8, letterSpacing: 2 },
-  eventCard: {
-    borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
+  bsDragArea: { alignItems: 'center', paddingTop: 10, paddingBottom: 8 },
+  bsDragHandle: { width: 40, height: 4, borderRadius: 2, marginBottom: 8 },
+  bsHeaderText: { fontSize: 12, fontWeight: '500' },
+  bsListContent: { paddingHorizontal: 16, paddingBottom: 100 },
+  centerSmall: { paddingVertical: 40, alignItems: 'center' },
+
+  // Bottom Sheet Cards
+  bsCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  eventHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  categoryBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99, borderWidth: 1 },
-  categoryText: { fontSize: 7, letterSpacing: 2 },
-  eventDate: { fontSize: 11 },
-  eventTitle: { fontSize: 14, fontWeight: '500', marginBottom: 4 },
-  eventDesc: { fontSize: 12, lineHeight: 18, marginBottom: 8 },
-  eventLocation: { fontSize: 11 },
-  eventFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTopWidth: 1 },
-  eventCreator: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  eventCreatorName: { fontSize: 11 },
-  placeCover: { width: '100%', height: 120, borderRadius: 12, marginBottom: 8 },
-  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 6 },
-  tagBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 99, borderWidth: 1 },
-  tagText: { fontSize: 8, letterSpacing: 1 },
-  tagMore: { fontSize: 9, marginLeft: 2 },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 6 },
-  ratingText: { fontSize: 12, fontWeight: '500', marginLeft: 4 },
-  ratingCount: { fontSize: 10 },
-  placeFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTopWidth: 1 },
+  bsAvatar: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  bsAvatarImg: { width: 40, height: 40, borderRadius: 20 },
+  bsAvatarText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  bsIconCircle: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  bsCardInfo: { flex: 1, gap: 1 },
+  bsCardName: { fontSize: 14, fontWeight: '500' },
+  bsCardSub: { fontSize: 11 },
+  bsAction: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99, borderWidth: 1,
+  },
+  bsActionText: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5 },
+  flBadge: {
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 99, borderWidth: 1,
+  },
+  flBadgeText: { fontSize: 7, fontWeight: '600', letterSpacing: 1.5 },
+
+  // FAB
   fab: {
     position: 'absolute', bottom: 24, right: 16, width: 56, height: 56, borderRadius: 28,
     backgroundColor: '#A8894E', alignItems: 'center', justifyContent: 'center', zIndex: 20,
     shadowColor: '#C8A96E', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8,
   },
+
+  // Map User Profilkarte
+  mapUserOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end',
+  },
+  mapUserSheet: {
+    borderTopLeftRadius: 20, borderTopRightRadius: 20, borderWidth: 1, borderBottomWidth: 0,
+    paddingHorizontal: 20, paddingBottom: 32,
+  },
+  mapUserHandleBar: { alignItems: 'center', paddingTop: 10, paddingBottom: 8 },
+  mapUserDrag: { width: 40, height: 4, borderRadius: 2 },
+  mapUserHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 12 },
+  mapUserAvatar: {
+    width: 64, height: 64, borderRadius: 32,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  mapUserAvatarImg: { width: 64, height: 64, borderRadius: 32 },
+  mapUserInitials: { fontSize: 22, fontWeight: '600' },
+  mapUserName: { fontSize: 18, fontWeight: '500' },
+  mapUserUsername: { fontSize: 13, fontWeight: '500', marginTop: 2 },
+  mapUserFL: { fontSize: 10, fontWeight: '600', letterSpacing: 1.5, marginTop: 3 },
+  mapUserBio: { fontSize: 13, fontWeight: '500', lineHeight: 20, marginBottom: 16 },
+  mapUserCloseBtn: {
+    alignItems: 'center', paddingVertical: 12, borderRadius: 999, borderWidth: 1, marginTop: 8,
+  },
+  mapUserCloseTxt: { fontSize: 14, fontWeight: '500' },
 });
