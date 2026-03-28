@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/auth';
 import { useChatStore } from '../../store/chat';
@@ -420,8 +421,23 @@ export default function ChatRoomScreen() {
       selectionLimit: remaining,
     });
     if (!result.canceled && result.assets.length > 0) {
-      const newUris = result.assets.map((a) => a.uri);
-      setPendingImages((prev) => [...prev, ...newUris].slice(0, 10));
+      // Zu JPEG konvertieren (loest HEIC / unsupported format Fehler)
+      const converted = await Promise.all(
+        result.assets.map(async (asset) => {
+          try {
+            const manipulated = await ImageManipulator.manipulateAsync(
+              asset.uri,
+              [],
+              { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
+            );
+            return manipulated.uri;
+          } catch {
+            // Fallback: Original-URI verwenden
+            return asset.uri;
+          }
+        }),
+      );
+      setPendingImages((prev) => [...prev, ...converted].slice(0, 10));
     }
   };
 

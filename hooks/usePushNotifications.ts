@@ -9,8 +9,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '../lib/api';
 import { useCall } from '../components/call/CallProvider';
+
+
+const PENDING_CALL_KEY = 'souleya_pending_call';
 
 // Dynamischer Import – expo-notifications ist nur im Dev-Build verfuegbar
 let Notifications: any = null;
@@ -46,34 +50,57 @@ export function usePushNotifications(userId: string | undefined) {
   const router = useRouter();
   const { triggerIncomingCall } = useCall();
 
+  // Ref damit der Listener immer die aktuellste Version von triggerIncomingCall hat
+  const triggerIncomingCallRef = useRef(triggerIncomingCall);
+  useEffect(() => {
+    triggerIncomingCallRef.current = triggerIncomingCall;
+  }, [triggerIncomingCall]);
+
   useEffect(() => {
     if (!Notifications || !Device || !userId) return;
     // Verhindere doppelte Registrierung
     if (registrationAttempted.current) return;
     registrationAttempted.current = true;
 
-    // Push Token registrieren (mit Verzoegerung fuer Auth-Stabilisierung)
     console.log('[Push] === PUSH NOTIFICATION SETUP START ===');
     console.log('[Push] userId:', userId);
     console.log('[Push] Platform:', Platform.OS);
-    console.log('[Push] Notifications module:', !!Notifications);
-    console.log('[Push] Device module:', !!Device);
-    console.log('[Push] Constants module:', !!Constants);
+
+    // Letzte Notification pruefen (App war vollstaendig beendet)
+    // Mit Delay damit CallProvider sicher gemountet ist
+    Notifications.getLastNotificationResponseAsync()
+      .then((response: any) => {
+        if (!response) return;
+        const data = response.notification?.request?.content?.data;
+        console.log('[Push] Letzte Notification (App war beendet):', data?.type);
+        if (data?.type === 'incoming_call' && data?.room_id) {
+          const callData = {
+            roomId: data.room_id,
+            channelId: data.channel_id,
+            callerId: data.caller_id,
+            callerName: data.caller_name ?? 'Jemand',
+            callerAvatar: data.caller_avatar || null,
+            isVideo: data.is_video === 'true',
+          };
+          // Direkt auloesen mit kurzem Delay (CallProvider braucht einen Moment)
+          setTimeout(() => {
+            console.log('[Push] Anruf aus letzter Notification ausloesen');
+            triggerIncomingCallRef.current(callData);
+          }, 800);
+        }
+      })
+      .catch(() => {});
 
     const registerTimer = setTimeout(() => {
-      console.log('[Push] Starte Token-Registrierung nach 2s Delay...');
       registerForPushNotifications().then((token) => {
         if (token) {
-          console.log('[Push] Token erhalten:', token);
           setExpoPushToken(token);
-
-          // Token auf Server registrieren mit Retry-Logik
           registerTokenWithRetry(token, 3);
         } else {
-          console.warn('[Push] KEIN TOKEN ERHALTEN - Push wird nicht funktionieren');
+          console.warn('[Push] Kein Push-Token erhalten');
         }
       }).catch((err) => {
-        console.error('[Push] FATALER FEHLER bei Token-Registrierung:', err);
+        console.error('[Push] Token-Registrierung fehlgeschlagen:', err);
       });
     }, 2000); // 2s warten bis Auth-Session stabil
 
@@ -92,15 +119,17 @@ export function usePushNotifications(userId: string | undefined) {
         console.log('[Push] Notification Tap:', data?.type, data?.link);
 
         if (data?.type === 'incoming_call' && data?.room_id) {
-          // Anruf-Overlay direkt anzeigen — kein Supabase-Broadcast noetig
-          triggerIncomingCall({
+          const callData = {
             roomId: data.room_id,
             channelId: data.channel_id,
             callerId: data.caller_id,
             callerName: data.caller_name ?? 'Jemand',
             callerAvatar: data.caller_avatar || null,
             isVideo: data.is_video === 'true',
-          });
+          };
+          // Via Ref aufrufen (immer aktuelle Version, kein stale closure)
+          console.log('[Push] Anruf-Overlay ausloesen via Ref');
+          triggerIncomingCallRef.current(callData);
         } else if (data?.type === 'chat_message' && data?.channel_id) {
           router.push(`/chat/${data.channel_id}` as any);
         } else if (data?.type === 'missed_call' && data?.link) {
