@@ -11,7 +11,6 @@ const {
   withAppDelegate,
   withInfoPlist,
   withDangerousMod,
-  withXcodeProject,
 } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
@@ -210,47 +209,16 @@ function withVoipBridgingHeader(config) {
   ]);
 }
 
-// ── 4. Header Search Paths (damit Xcode die .h Dateien findet) ──
-// Nutzt withXcodeProject statt withDangerousMod, da andere Plugins (z.B.
-// @config-plugins/react-native-callkeep) ebenfalls withXcodeProject verwenden
-// und die pbxproj in-memory modifizieren — withDangerousMod wuerde ueberschrieben.
-
-function withVoipHeaderSearchPaths(config) {
-  return withXcodeProject(config, (mod) => {
-    const project = mod.modResults;
-    const voipHeaderPath = '"$(SRCROOT)/../node_modules/react-native-voip-push-notification/ios/RNVoipPushNotification"';
-
-    // Alle Build-Konfigurationen durchgehen
-    const configs = project.pbxXCBuildConfigurationSection();
-    for (const key in configs) {
-      const buildConfig = configs[key];
-      if (typeof buildConfig !== 'object' || !buildConfig.buildSettings) continue;
-
-      const settings = buildConfig.buildSettings;
-      // Nur App-Target Konfigurationen (nicht Pods)
-      if (!settings.INFOPLIST_FILE && !settings.PRODUCT_BUNDLE_IDENTIFIER) continue;
-
-      if (!settings.HEADER_SEARCH_PATHS) {
-        settings.HEADER_SEARCH_PATHS = ['$(inherited)', voipHeaderPath];
-      } else if (Array.isArray(settings.HEADER_SEARCH_PATHS)) {
-        if (!settings.HEADER_SEARCH_PATHS.some((p) => p.includes('react-native-voip-push-notification'))) {
-          settings.HEADER_SEARCH_PATHS.push(voipHeaderPath);
-        }
-      }
-    }
-
-    console.log('[withVoipPush] Header Search Paths via withXcodeProject aktualisiert');
-    return mod;
-  });
-}
-
 // ── Haupt-Plugin ─────────────────────────────────────────────
+// Header Search Paths werden NICHT manuell gesetzt — CocoaPods
+// richtet sie automatisch fuer alle gelinkten Pods ein.
+// @config-plugins/react-native-callkeep fuegt nur den Callkeep-Pfad hinzu,
+// der VoIP-Push-Pfad kommt ueber die Pod-Integration.
 
 const withVoipPush = (config) => {
   config = withVoipAppDelegate(config);
   config = withVoipInfoPlist(config);
   config = withVoipBridgingHeader(config);
-  config = withVoipHeaderSearchPaths(config);
   return config;
 };
 
