@@ -91,7 +91,7 @@ function withVoipAppDelegate(config) {
   public func pushRegistry(_ registry: PKPushRegistry,
                            didUpdate pushCredentials: PKPushCredentials,
                            for type: PKPushType) {
-    RNVoipPushNotificationManager.didUpdate(pushCredentials, forType: type.rawValue)
+    RNVoipPushNotificationManager.didUpdatePushCredentials(pushCredentials, forType: type.rawValue)
   }
 
   // VoIP Push empfangen → sofort an CallKit melden (iOS 13+ Pflicht)
@@ -106,7 +106,7 @@ function withVoipAppDelegate(config) {
     let hasVideo = (dict["is_video"] as? String) == "true"
 
     RNVoipPushNotificationManager.addCompletionHandler(uuid, completionHandler: completion)
-    RNVoipPushNotificationManager.didReceiveIncomingPush(with: payload, forType: type.rawValue)
+    RNVoipPushNotificationManager.didReceiveIncomingPush(withPayload: payload, forType: type.rawValue)
 
     RNCallKeep.reportNewIncomingCall(uuid,
                                      handle: handle,
