@@ -29,7 +29,8 @@
         "UIBackgroundModes": [
           "remote-notification",
           "fetch",
-          "audio"
+          "audio",
+          "voip"
         ]
       }
     },
@@ -49,9 +50,15 @@
     "plugins": [
       "expo-router",
       "expo-apple-authentication",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "sounds": ["./assets/sounds/ringtone.wav"]
+        }
+      ],
       "@rnmapbox/maps",
-      "./plugins/withCallKeep"
+      "@config-plugins/react-native-callkeep",
+      "./plugins/withVoipPush"
     ],
     "experiments": {
       "typedRoutes": true
@@ -63,8 +70,6 @@
       }
     },
     "owner": "andreas_mutz",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    }
+    "runtimeVersion": "1.0.0"
   }
 }

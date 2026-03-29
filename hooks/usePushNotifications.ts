@@ -4,15 +4,16 @@
  *
  * Nutzt expo-notifications (Expo Push Service).
  * Token wird an POST /notifications/register gesendet.
+ *
+ * Anruf-Notifications nutzen die Kategorie "INCOMING_CALL" mit
+ * Accept/Reject Buttons direkt in der Notification (iOS).
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '../lib/api';
 import { useCall } from '../components/call/CallProvider';
-
 
 const PENDING_CALL_KEY = 'souleya_pending_call';
 
@@ -20,11 +21,13 @@ const PENDING_CALL_KEY = 'souleya_pending_call';
 let Notifications: any = null;
 let Device: any = null;
 let Constants: any = null;
+let AsyncStorage: any = null;
 
 try {
   Notifications = require('expo-notifications');
   Device = require('expo-device');
   Constants = require('expo-constants');
+  AsyncStorage = require('@react-native-async-storage/async-storage').default;
 } catch {
   // Nicht verfuegbar (z.B. Web oder Expo Go ohne native Module)
 }
@@ -40,6 +43,29 @@ if (Notifications) {
       }),
     });
   } catch {}
+
+  // Kategorie sofort beim App-Start registrieren (nicht erst wenn Hook mounted)
+  // iOS cached Kategorien persistent – einmal registriert bleiben sie bis zum nächsten Update
+  if (Platform.OS === 'ios') {
+    try {
+      Notifications.setNotificationCategoryAsync('INCOMING_CALL', [
+        {
+          identifier: 'ACCEPT',
+          buttonTitle: 'Annehmen',
+          options: { opensAppToForeground: true },
+        },
+        {
+          identifier: 'REJECT',
+          buttonTitle: 'Ablehnen',
+          options: { opensAppToForeground: false, isDestructive: true },
+        },
+      ]).catch((e: unknown) => {
+        console.warn('[Push] Kategorie-Registrierung fehlgeschlagen:', e);
+      });
+    } catch (e) {
+      console.warn('[Push] Kategorie-Registrierung fehlgeschlagen:', e);
+    }
+  }
 }
 
 export function usePushNotifications(userId: string | undefined) {
@@ -62,18 +88,21 @@ export function usePushNotifications(userId: string | undefined) {
     if (registrationAttempted.current) return;
     registrationAttempted.current = true;
 
-    console.log('[Push] === PUSH NOTIFICATION SETUP START ===');
-    console.log('[Push] userId:', userId);
-    console.log('[Push] Platform:', Platform.OS);
-
     // Letzte Notification pruefen (App war vollstaendig beendet)
-    // Mit Delay damit CallProvider sicher gemountet ist
     Notifications.getLastNotificationResponseAsync()
       .then((response: any) => {
         if (!response) return;
         const data = response.notification?.request?.content?.data;
-        console.log('[Push] Letzte Notification (App war beendet):', data?.type);
+        const actionId = response.actionIdentifier;
+
         if (data?.type === 'incoming_call' && data?.room_id) {
+          // Ablehnen via Notification-Button → kein Overlay zeigen
+          if (actionId === 'REJECT') {
+            sendRejectSignal(data.channel_id, data.room_id);
+            return;
+          }
+
+          // Annehmen oder Tap → Overlay anzeigen
           const callData = {
             roomId: data.room_id,
             channelId: data.channel_id,
@@ -82,9 +111,7 @@ export function usePushNotifications(userId: string | undefined) {
             callerAvatar: data.caller_avatar || null,
             isVideo: data.is_video === 'true',
           };
-          // Direkt auloesen mit kurzem Delay (CallProvider braucht einen Moment)
           setTimeout(() => {
-            console.log('[Push] Anruf aus letzter Notification ausloesen');
             triggerIncomingCallRef.current(callData);
           }, 800);
         }
@@ -102,7 +129,7 @@ export function usePushNotifications(userId: string | undefined) {
       }).catch((err) => {
         console.error('[Push] Token-Registrierung fehlgeschlagen:', err);
       });
-    }, 2000); // 2s warten bis Auth-Session stabil
+    }, 2000);
 
     // Eingehende Notification waehrend App offen
     notificationListener.current = Notifications.addNotificationReceivedListener(
@@ -112,13 +139,20 @@ export function usePushNotifications(userId: string | undefined) {
       },
     );
 
-    // Tap auf Notification (App im Hintergrund oder geschlossen)
+    // Tap oder Action auf Notification (App im Hintergrund oder geschlossen)
     responseListener.current = Notifications.addNotificationResponseReceivedListener(
       (response: any) => {
         const data = response.notification.request.content.data;
-        console.log('[Push] Notification Tap:', data?.type, data?.link);
+        const actionId = response.actionIdentifier;
 
         if (data?.type === 'incoming_call' && data?.room_id) {
+          // Ablehnen via Notification-Button
+          if (actionId === 'REJECT') {
+            sendRejectSignal(data.channel_id, data.room_id);
+            return;
+          }
+
+          // Annehmen oder Tap → Overlay
           const callData = {
             roomId: data.room_id,
             channelId: data.channel_id,
@@ -127,8 +161,6 @@ export function usePushNotifications(userId: string | undefined) {
             callerAvatar: data.caller_avatar || null,
             isVideo: data.is_video === 'true',
           };
-          // Via Ref aufrufen (immer aktuelle Version, kein stale closure)
-          console.log('[Push] Anruf-Overlay ausloesen via Ref');
           triggerIncomingCallRef.current(callData);
         } else if (data?.type === 'chat_message' && data?.channel_id) {
           router.push(`/chat/${data.channel_id}` as any);
@@ -158,30 +190,49 @@ export function usePushNotifications(userId: string | undefined) {
   return { expoPushToken };
 }
 
+/** Anruf ablehnen via Supabase Broadcast */
+function sendRejectSignal(channelId: string, roomId: string) {
+  // Direkt via Supabase senden (kein Auth-Token nötig für Broadcast)
+  try {
+    const { supabase } = require('../lib/supabase');
+    const ch = supabase.channel(`call:${roomId}`);
+    ch.subscribe((status: string) => {
+      if (status === 'SUBSCRIBED') {
+        ch.send({ type: 'broadcast', event: 'call_end', payload: {} });
+        setTimeout(() => supabase.removeChannel(ch), 1000);
+      }
+    });
+  } catch (e) {
+    console.warn('[Push] Reject-Signal konnte nicht gesendet werden:', e);
+  }
+}
+
 async function registerForPushNotifications(): Promise<string | null> {
   if (!Notifications || !Device || !Constants) return null;
 
-  console.log('[Push] isDevice:', Device.isDevice);
-  console.log('[Push] brand:', Device.brand);
-  console.log('[Push] modelName:', Device.modelName);
-
-  // Nur auf echtem Geraet (nicht Simulator)
   if (!Device.isDevice) {
     console.log('[Push] ABBRUCH: Nur auf echtem Geraet verfuegbar');
     return null;
   }
 
-  // Android: Notification Channel erstellen (ab Android 8)
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'Souleya',
-      importance: 4, // MAX
+      importance: 4,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#C8A96E',
     });
+
+    // Android Anruf-Channel mit hoher Priorität
+    await Notifications.setNotificationChannelAsync('incoming_call', {
+      name: 'Eingehende Anrufe',
+      importance: 5, // IMPORTANCE_HIGH
+      vibrationPattern: [0, 500, 500, 500, 500, 500],
+      lightColor: '#C8A96E',
+      sound: 'default',
+    });
   }
 
-  // Berechtigung pruefen/anfragen
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
 
@@ -190,26 +241,21 @@ async function registerForPushNotifications(): Promise<string | null> {
     finalStatus = status;
   }
 
-  console.log('[Push] Permission Status: existing=', existingStatus, 'final=', finalStatus);
   if (finalStatus !== 'granted') {
-    console.log('[Push] ABBRUCH: Berechtigung nicht erteilt (status:', finalStatus, ')');
+    console.log('[Push] ABBRUCH: Berechtigung nicht erteilt');
     return null;
   }
 
-  // iOS: Badge-Zaehler zuruecksetzen
   if (Platform.OS === 'ios') {
     await Notifications.setBadgeCountAsync(0);
   }
 
-  // Expo Push Token holen
   try {
     const projectId =
       Constants.default?.expoConfig?.extra?.eas?.projectId ??
       Constants.expoConfig?.extra?.eas?.projectId ??
       '19c7c3dc-862d-4e1d-8123-a23909ed3608';
-    console.log('[Push] ProjectId:', projectId);
     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    console.log('[Push] Token generiert:', tokenData.data?.substring(0, 30) + '...');
     return tokenData.data;
   } catch (e) {
     console.error('[Push] Token-Fehler:', e);
@@ -217,7 +263,6 @@ async function registerForPushNotifications(): Promise<string | null> {
   }
 }
 
-/** Token auf Server registrieren mit automatischem Retry */
 async function registerTokenWithRetry(token: string, maxRetries: number) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -228,15 +273,11 @@ async function registerTokenWithRetry(token: string, maxRetries: number) {
           platform: Platform.OS === 'ios' ? 'ios' : 'android',
         }),
       });
-      console.log(`[Push] Token auf Server registriert (Versuch ${attempt})`);
-      return; // Erfolg
+      return;
     } catch (err: any) {
-      console.warn(`[Push] Token-Registrierung fehlgeschlagen (Versuch ${attempt}/${maxRetries}):`, err?.message ?? err);
       if (attempt < maxRetries) {
-        // Exponentielles Backoff: 3s, 6s, 12s
         await new Promise((r) => setTimeout(r, 3000 * attempt));
       }
     }
   }
-  console.error('[Push] Token-Registrierung endgueltig fehlgeschlagen nach', maxRetries, 'Versuchen');
 }

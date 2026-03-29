@@ -1,199 +1,163 @@
 /**
- * useCallKit – iOS CallKit + PushKit Integration
+ * useCallKit – VoIP Push Token Registration + CallKit Event-Handler
  *
- * Zeigt den nativen iOS Anruf-Screen (wie bei einem normalen Telefonanruf),
- * auch wenn die App im Hintergrund oder gesperrt ist.
+ * Nutzt:
+ * - react-native-voip-push-notification: PushKit Token empfangen
+ * - react-native-callkeep: CallKit UI (Annehmen/Ablehnen)
  *
- * Ablauf:
- * 1. PushKit registriert VoIP-Token → API speichert ihn
- * 2. Bei eingehendem Anruf: API sendet VoIP-Push → iOS weckt App
- * 3. App ruft CallKit auf → nativer Anruf-Screen erscheint
- * 4. User nimmt an → CallKit-Callback → WebRTC startet
+ * Setup passiert nativ im AppDelegate (via withVoipPush Plugin).
+ * Dieser Hook handhabt nur die JS-Seite.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { apiFetch } from '../lib/api';
 
-// Dynamischer Import – nur im nativen Build verfügbar
+// Dynamische Imports — nur im nativen Build verfuegbar
 let RNCallKeep: any = null;
+let VoipPushNotification: any = null;
+
 try {
   RNCallKeep = require('react-native-callkeep').default;
 } catch {
-  // Nicht verfügbar in Expo Go
+  // Nicht verfuegbar
 }
 
-const CALLKEEP_OPTIONS = {
-  ios: {
-    appName: 'Souleya',
-    supportsVideo: true,
-    maximumCallGroups: '1',
-    maximumCallsPerCallGroup: '1',
-    includesCallsInRecents: false,
-  },
-};
-
-export interface CallKeepIncomingCall {
-  uuid: string;
-  roomId: string;
-  channelId: string;
-  callerId: string;
-  callerName: string;
-  callerAvatar: string | null;
-  isVideo: boolean;
+try {
+  VoipPushNotification = require('react-native-voip-push-notification').default;
+} catch {
+  // Nicht verfuegbar
 }
 
-interface UseCallKitParams {
-  userId: string | undefined;
-  onIncomingCall: (call: CallKeepIncomingCall) => void;
-  onCallAnswered: (uuid: string) => void;
-  onCallEnded: (uuid: string) => void;
+interface CallKitCallbacks {
+  onAnswered: (callUUID: string, payload: Record<string, any>) => void;
+  onEnded: (callUUID: string) => void;
 }
 
-export function useCallKit({
-  userId,
-  onIncomingCall,
-  onCallAnswered,
-  onCallEnded,
-}: UseCallKitParams) {
-  const setupDone = useRef(false);
-  const activeUuid = useRef<string | null>(null);
+// Speichert Payload pro callUUID (fuer spaetere Zuordnung)
+const callPayloads = new Map<string, Record<string, any>>();
+
+export function useCallKit(userId: string | undefined, callbacks: CallKitCallbacks) {
+  const initialized = useRef(false);
+  const voipTokenSent = useRef(false);
+  const callbacksRef = useRef(callbacks);
 
   useEffect(() => {
-    if (!RNCallKeep || Platform.OS !== 'ios' || !userId) return;
-    if (setupDone.current) return;
-    setupDone.current = true;
+    callbacksRef.current = callbacks;
+  }, [callbacks]);
 
-    // ── CallKit initialisieren ──────────────────────────────
-    try {
-      RNCallKeep.setup(CALLKEEP_OPTIONS);
-      RNCallKeep.setAvailable(true);
-    } catch (err) {
-      console.warn('[CallKit] Setup fehlgeschlagen:', err);
-      return;
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !userId || initialized.current) return;
+    if (!RNCallKeep && !VoipPushNotification) return;
+    initialized.current = true;
+
+    // ── VoIP Push Token registrieren ──
+    if (VoipPushNotification) {
+      // Events die vor JS-Bridge ankamen verarbeiten
+      VoipPushNotification.addEventListener('didLoadWithEvents', (events: any[]) => {
+        if (!events || !Array.isArray(events) || events.length === 0) return;
+        for (const event of events) {
+          if (event.name === 'RNVoipPushRemoteNotificationsRegisteredEvent') {
+            sendTokenToServer(event.data);
+          }
+          if (event.name === 'RNVoipPushRemoteNotificationReceivedEvent') {
+            // VoIP Push kam an bevor JS bereit war — CallKit hat bereits
+            // im nativen Code den Anruf gemeldet (AppDelegate)
+            console.log('[VoIP] Push empfangen (vor JS-Ready):', event.data);
+          }
+        }
+      });
+
+      // VoIP Token empfangen
+      VoipPushNotification.addEventListener('register', (token: string) => {
+        console.log('[VoIP] Token erhalten:', token.substring(0, 16) + '...');
+        sendTokenToServer(token);
+      });
+
+      // VoIP Push Notification empfangen (JS-Seite)
+      VoipPushNotification.addEventListener('notification', (notification: any) => {
+        console.log('[VoIP] Push empfangen:', notification);
+        // Payload speichern fuer spaetere Zuordnung bei answerCall
+        if (notification?.uuid) {
+          callPayloads.set(notification.uuid, notification);
+        }
+        // Completion melden
+        VoipPushNotification.onVoipNotificationCompleted(notification?.uuid);
+      });
+
+      // Token-Registrierung anstossen (nativer Code macht das auch,
+      // aber sicherheitshalber nochmal von JS)
+      VoipPushNotification.registerVoipToken();
     }
 
-    // ── VoIP Token (PushKit) registrieren ───────────────────
-    RNCallKeep.addEventListener('didLoadWithEvents', (events: any[]) => {
-      // Gespeicherte Events wenn App aus getötetem Zustand gestartet wurde
-      if (!events?.length) return;
-      for (const event of events) {
-        if (event.name === 'RNCallKeepPerformAnswerCallAction') {
-          onCallAnswered(event.data?.callUUID);
-        }
-        if (event.name === 'RNCallKeepPerformEndCallAction') {
-          onCallEnded(event.data?.callUUID);
-        }
-      }
-    });
-
-    // VoIP Push Token empfangen und an API senden
-    RNCallKeep.addEventListener('voipTokenReceived', ({ token }: { token: string }) => {
-      if (!token) return;
-      console.log('[CallKit] VoIP Token erhalten:', token.substring(0, 20) + '...');
-      apiFetch('/notifications/register-voip', {
-        method: 'POST',
-        body: JSON.stringify({ voip_token: token }),
-      }).catch((err) => {
-        console.warn('[CallKit] VoIP Token Registrierung fehlgeschlagen:', err);
+    // ── CallKit Events ──
+    if (RNCallKeep) {
+      // Anruf angenommen (User hat in CallKit-UI "Annehmen" getippt)
+      RNCallKeep.addEventListener('answerCall', ({ callUUID }: { callUUID: string }) => {
+        console.log('[CallKit] Anruf angenommen:', callUUID);
+        const payload = callPayloads.get(callUUID) || {};
+        callbacksRef.current.onAnswered(callUUID, payload);
       });
-    });
 
-    // ── CallKit Events ──────────────────────────────────────
+      // Anruf beendet/abgelehnt (User hat in CallKit-UI "Ablehnen" oder "Auflegen" getippt)
+      RNCallKeep.addEventListener('endCall', ({ callUUID }: { callUUID: string }) => {
+        console.log('[CallKit] Anruf beendet:', callUUID);
+        callPayloads.delete(callUUID);
+        callbacksRef.current.onEnded(callUUID);
+      });
 
-    // User nimmt Anruf an (aus nativem Screen)
-    RNCallKeep.addEventListener('answerCall', ({ callUUID }: { callUUID: string }) => {
-      console.log('[CallKit] Anruf angenommen:', callUUID);
-      activeUuid.current = callUUID;
-      onCallAnswered(callUUID);
-      RNCallKeep.setMutedCall(callUUID, false);
-    });
-
-    // User legt auf / lehnt ab (aus nativem Screen)
-    RNCallKeep.addEventListener('endCall', ({ callUUID }: { callUUID: string }) => {
-      console.log('[CallKit] Anruf beendet:', callUUID);
-      onCallEnded(callUUID);
-      activeUuid.current = null;
-    });
-
-    // Nativem Screen wurde angezeigt
-    RNCallKeep.addEventListener('didDisplayIncomingCall', ({ callUUID, error }: any) => {
-      if (error) {
-        console.warn('[CallKit] Anzeige fehlgeschlagen:', error);
-      } else {
-        console.log('[CallKit] Anruf-Screen angezeigt:', callUUID);
-      }
-    });
-
-    // VoIP Push empfangen (App war im Hintergrund – natives Event)
-    RNCallKeep.addEventListener('showIncomingCallUi', (data: any) => {
-      console.log('[CallKit] VoIP Push erhalten (showIncomingCallUi):', data);
-      // Hier kommen die Daten aus dem VoIP-Push-Payload
-      if (data?.payload) {
-        const payload = typeof data.payload === 'string'
-          ? JSON.parse(data.payload)
-          : data.payload;
-        if (payload?.room_id) {
-          onIncomingCall({
-            uuid: data.callUUID ?? data.uuid,
-            roomId: payload.room_id,
-            channelId: payload.channel_id,
-            callerId: payload.caller_id,
-            callerName: payload.caller_name ?? 'Jemand',
-            callerAvatar: payload.caller_avatar || null,
-            isVideo: payload.is_video === 'true',
-          });
+      // didDisplayIncomingCall — Anruf wird auf dem Screen angezeigt
+      RNCallKeep.addEventListener('didDisplayIncomingCall', ({ callUUID, payload }: any) => {
+        console.log('[CallKit] Anruf angezeigt:', callUUID);
+        if (payload) {
+          callPayloads.set(callUUID, payload);
         }
-      }
-    });
+      });
 
-    // Registrierung für VoIP Token auslösen
-    RNCallKeep.registerVoipToken?.();
+      // didReceiveStartCallAction — fuer ausgehende Anrufe (z.B. aus Telefon-App Recents)
+      RNCallKeep.addEventListener('didReceiveStartCallAction', () => {
+        // Nicht relevant fuer uns — wir starten Anrufe nur aus der App
+      });
+    }
 
     return () => {
-      RNCallKeep.removeEventListener('didLoadWithEvents');
-      RNCallKeep.removeEventListener('voipTokenReceived');
-      RNCallKeep.removeEventListener('answerCall');
-      RNCallKeep.removeEventListener('endCall');
-      RNCallKeep.removeEventListener('didDisplayIncomingCall');
-      RNCallKeep.removeEventListener('showIncomingCallUi');
+      if (VoipPushNotification) {
+        VoipPushNotification.removeEventListener('didLoadWithEvents');
+        VoipPushNotification.removeEventListener('register');
+        VoipPushNotification.removeEventListener('notification');
+      }
+      if (RNCallKeep) {
+        RNCallKeep.removeEventListener('answerCall');
+        RNCallKeep.removeEventListener('endCall');
+        RNCallKeep.removeEventListener('didDisplayIncomingCall');
+        RNCallKeep.removeEventListener('didReceiveStartCallAction');
+      }
     };
   }, [userId]);
 
-  // ── Öffentliche Methoden ────────────────────────────────────
-
-  const displayIncomingCall = (
-    uuid: string,
-    callerName: string,
-    isVideo: boolean,
-  ) => {
+  // Ausgehenden Anruf in CallKit anzeigen
+  const reportOutgoingCall = useCallback((callUUID: string, callerName: string, isVideo: boolean) => {
     if (!RNCallKeep || Platform.OS !== 'ios') return;
-    activeUuid.current = uuid;
-    RNCallKeep.displayIncomingCall(
-      uuid,
-      callerName,
-      callerName,
-      'generic',
-      isVideo,
-    );
-  };
+    RNCallKeep.startCall(callUUID, callerName, callerName, 'generic', isVideo);
+  }, []);
 
-  const answerCall = (uuid: string) => {
+  // Anruf in CallKit beenden
+  const endCallKit = useCallback((callUUID: string) => {
     if (!RNCallKeep || Platform.OS !== 'ios') return;
-    RNCallKeep.answerIncomingCall(uuid);
-  };
+    RNCallKeep.endCall(callUUID);
+    callPayloads.delete(callUUID);
+  }, []);
 
-  const endCall = (uuid: string) => {
-    if (!RNCallKeep || Platform.OS !== 'ios') return;
-    RNCallKeep.endCall(uuid);
-    activeUuid.current = null;
-  };
+  return { reportOutgoingCall, endCallKit };
+}
 
-  const endAllCalls = () => {
-    if (!RNCallKeep || Platform.OS !== 'ios') return;
-    RNCallKeep.endAllCalls();
-    activeUuid.current = null;
-  };
+// ── Helper ───────────────────────────────────────────────────
 
-  return { displayIncomingCall, answerCall, endCall, endAllCalls, activeUuid };
+function sendTokenToServer(token: string) {
+  apiFetch('/notifications/register-voip', {
+    method: 'POST',
+    body: JSON.stringify({ voip_token: token }),
+  })
+    .then(() => console.log('[VoIP] Token an Server gesendet'))
+    .catch((err) => console.error('[VoIP] Token-Registrierung fehlgeschlagen:', err));
 }
