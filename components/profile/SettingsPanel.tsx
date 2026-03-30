@@ -16,9 +16,7 @@ type SubView = 'main' | 'appearance' | 'notifications' | 'privacy' | 'account';
 export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const colors = useThemeStore((s) => s.colors);
   const mode = useThemeStore((s) => s.mode);
-  const colorScheme = useThemeStore((s) => s.colorScheme);
   const setTheme = useThemeStore((s) => s.setTheme);
-  const setColorScheme = useThemeStore((s) => s.setColorScheme);
   const [subView, setSubView] = useState<SubView>('main');
 
   const handleClose = () => {
@@ -70,12 +68,6 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             <ToggleChip label="Dunkel" active={mode === 'dark'} colors={colors} onPress={() => setTheme('dark')} />
           </View>
 
-          {/* Color Scheme Toggle */}
-          <Text style={[styles.sectionLabel, { color: colors.textMuted, marginTop: 20 }]}>FARBSCHEMA</Text>
-          <View style={styles.chipRow}>
-            <ToggleChip label="Gold" active={colorScheme === 'gold'} colors={colors} onPress={() => setColorScheme('gold')} dotColor="#C8A96E" />
-            <ToggleChip label="Dusk" active={colorScheme === 'dusk'} colors={colors} onPress={() => setColorScheme('dusk')} dotColor="#A78BFA" />
-          </View>
         </View>
       )}
 

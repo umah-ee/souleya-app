@@ -1,8 +1,8 @@
 /**
  * Souleya App Theme Tokens
  * Spiegel der CSS Custom Properties aus souleya-web/src/app/globals.css
- * Farbschemata: Gold (Standard) + Dusk (Lavender/Rose)
- * Beide Themes: Light + Dark → 4 Kombinationen
+ * Farbschema: Gold (Standard)
+ * Themes: Light + Dark
  */
 
 export interface ThemeColors {
@@ -11,7 +11,7 @@ export interface ThemeColors {
   bgGradientStart: string;
   bgGradientEnd: string;
 
-  // Gold Palette (in Dusk: Lavender statt Gold)
+  // Gold Palette
   gold: string;
   goldText: string;
   goldDeep: string;
@@ -21,7 +21,7 @@ export interface ThemeColors {
   goldBorderS: string;
   goldGlow: string;
 
-  // Dusk Accent-Farben (nur in Dusk aktiv, in Gold = gold)
+  // Additional Accents
   accent2: string;
   accent2Soft: string;
   accent2Glow: string;
@@ -219,146 +219,3 @@ export const darkTheme: ThemeColors = {
   bgElevated: '#282828',
 };
 
-// ═══════════════════════════════════════════
-// DUSK FARBSCHEMA (Lavender / Rose)
-// ═══════════════════════════════════════════
-
-export const duskLightTheme: ThemeColors = {
-  // Background
-  bgSolid: '#FAF5FF',
-  bgGradientStart: '#FAF5FF',
-  bgGradientEnd: '#E5E0FA',
-
-  // Lavender (ersetzt Gold)
-  gold: '#7C3AED',
-  goldText: '#6D28D9',
-  goldDeep: '#5B21B6',
-  goldBg: 'rgba(124,58,237,0.10)',
-  goldBgHover: 'rgba(124,58,237,0.18)',
-  goldBorder: 'rgba(124,58,237,0.35)',
-  goldBorderS: 'rgba(124,58,237,0.20)',
-  goldGlow: 'rgba(124,58,237,0.30)',
-
-  // Accents
-  accent2: '#DB2777',
-  accent2Soft: 'rgba(219,39,119,0.10)',
-  accent2Glow: 'rgba(219,39,119,0.30)',
-  accent3: '#D97706',
-
-  // Text
-  textH: '#120828',
-  textBody: '#382850',
-  textSec: '#6B5B8A',
-  textMuted: '#9489A8',
-  textOnGold: '#FFFFFF',
-
-  // Glass
-  glass: 'rgba(255,255,255,0.55)',
-  glassBorder: 'rgba(255,255,255,0.80)',
-
-  // Navigation
-  glassNav: 'rgba(255,255,255,0.45)',
-  glassNavB: 'rgba(255,255,255,0.60)',
-
-  // Dividers
-  divider: 'rgba(124,58,237,0.12)',
-  dividerL: 'rgba(124,58,237,0.06)',
-
-  // Avatar
-  avatarBg: 'rgba(124,58,237,0.12)',
-
-  // Input
-  inputBg: 'rgba(255,255,255,0.55)',
-  inputBorder: 'rgba(124,58,237,0.20)',
-
-  // Status
-  success: '#2D8A56',
-  error: '#B43C32',
-  warning: '#D97706',
-
-  // Tab Bar
-  tabBarBg: 'rgba(255,255,255,0.85)',
-  tabBarBorder: 'rgba(124,58,237,0.12)',
-  tabBarActive: '#6D28D9',
-  tabBarInactive: '#9489A8',
-
-  // Enso Ring
-  ensoGradientStart: '#8B5CF6',
-  ensoGradientEnd: '#F472B6',
-  ensoDotColor: '#A78BFA',
-
-  // Convenience aliases
-  text: '#382850',
-  cardBg: 'rgba(255,255,255,0.55)',
-  bgElevated: '#FAF5FF',
-};
-
-export const duskDarkTheme: ThemeColors = {
-  // Background (neutral-grau, NICHT lila)
-  bgSolid: '#19191F',
-  bgGradientStart: '#19191F',
-  bgGradientEnd: '#19191F',
-
-  // Lavender (ersetzt Gold)
-  gold: '#A78BFA',
-  goldText: '#A78BFA',
-  goldDeep: '#8B5CF6',
-  goldBg: 'rgba(167,139,250,0.10)',
-  goldBgHover: 'rgba(167,139,250,0.18)',
-  goldBorder: 'rgba(167,139,250,0.30)',
-  goldBorderS: 'rgba(167,139,250,0.14)',
-  goldGlow: 'rgba(167,139,250,0.25)',
-
-  // Accents
-  accent2: '#F472B6',
-  accent2Soft: 'rgba(244,114,182,0.10)',
-  accent2Glow: 'rgba(244,114,182,0.25)',
-  accent3: '#FBBF78',
-
-  // Text
-  textH: '#F0EDF5',
-  textBody: '#C5C0CE',
-  textSec: '#9E98AA',
-  textMuted: '#807A8A',
-  textOnGold: '#19191F',
-
-  // Glass
-  glass: 'rgba(255,255,255,0.03)',
-  glassBorder: 'rgba(255,255,255,0.06)',
-
-  // Navigation
-  glassNav: 'rgba(25,25,31,0.88)',
-  glassNavB: 'rgba(255,255,255,0.06)',
-
-  // Dividers
-  divider: 'rgba(255,255,255,0.06)',
-  dividerL: 'rgba(255,255,255,0.04)',
-
-  // Avatar
-  avatarBg: 'rgba(167,139,250,0.12)',
-
-  // Input
-  inputBg: 'rgba(255,255,255,0.03)',
-  inputBorder: 'rgba(167,139,250,0.14)',
-
-  // Status
-  success: '#52B788',
-  error: '#E63946',
-  warning: '#FBBF78',
-
-  // Tab Bar
-  tabBarBg: 'rgba(25,25,31,0.92)',
-  tabBarBorder: 'rgba(255,255,255,0.06)',
-  tabBarActive: '#A78BFA',
-  tabBarInactive: '#807A8A',
-
-  // Enso Ring
-  ensoGradientStart: '#8B5CF6',
-  ensoGradientEnd: '#F472B6',
-  ensoDotColor: '#A78BFA',
-
-  // Convenience aliases
-  text: '#C5C0CE',
-  cardBg: 'rgba(255,255,255,0.03)',
-  bgElevated: '#222228',
-};
