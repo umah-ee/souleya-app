@@ -6,7 +6,7 @@
 
 import React, { useMemo, useRef, useState, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, ImageBackground, Share, Alert,
+  View, Text, TouchableOpacity, Image, Share,
   StyleSheet, Platform, Dimensions, ActivityIndicator,
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
@@ -28,7 +28,7 @@ export default function WisdomCard({ userId }: Props) {
   const [sharing, setSharing] = useState(false);
 
   const quote = useMemo(() => getDailyQuote(userId), [userId]);
-  const bgImage = useMemo(() => getQuoteBackground(quote), [quote]);
+  const bgSource = useMemo(() => ({ uri: getQuoteBackground(quote) }), [quote]);
 
   const handleShare = useCallback(async () => {
     setSharing(true);
@@ -69,52 +69,53 @@ export default function WisdomCard({ userId }: Props) {
           options={{ format: 'png', quality: 1, result: 'tmpfile' }}
           style={styles.viewShot}
         >
-          <ImageBackground
-            source={{ uri: bgImage }}
-            style={styles.card}
-            resizeMode="cover"
-            imageStyle={styles.bgImageStyle}
-            fadeDuration={0}
-          >
-          {/* Dunkler Gradient-Overlay */}
-          <View style={styles.gradientOverlay} />
+          <View style={styles.card}>
+            {/* Hintergrundbild */}
+            <Image
+              source={bgSource}
+              style={StyleSheet.absoluteFillObject}
+              resizeMode="cover"
+              fadeDuration={0}
+            />
+            {/* Dunkler Gradient-Overlay */}
+            <View style={styles.gradientOverlay} />
 
-          {/* Souleya Branding oben */}
-          <View style={styles.brandingBar}>
-            <Svg width={22} height={22} viewBox="0 0 100 100">
-              <Defs>
-                <LinearGradient id="wc-enso" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <Stop offset="0%" stopColor="#A8894E" />
-                  <Stop offset="100%" stopColor="#D4BC8B" />
-                </LinearGradient>
-              </Defs>
-              <Circle
-                cx="50" cy="50" r="36" fill="none"
-                stroke="url(#wc-enso)" strokeWidth={9} strokeLinecap="round"
-                strokeDasharray="196 30" strokeDashoffset="15"
-              />
-            </Svg>
-            <Text style={styles.brandingText}>SOULEYA</Text>
+            {/* Souleya Branding oben */}
+            <View style={styles.brandingBar}>
+              <Svg width={22} height={22} viewBox="0 0 100 100">
+                <Defs>
+                  <LinearGradient id="wc-enso" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <Stop offset="0%" stopColor="#A8894E" />
+                    <Stop offset="100%" stopColor="#D4BC8B" />
+                  </LinearGradient>
+                </Defs>
+                <Circle
+                  cx="50" cy="50" r="36" fill="none"
+                  stroke="url(#wc-enso)" strokeWidth={9} strokeLinecap="round"
+                  strokeDasharray="196 30" strokeDashoffset="15"
+                />
+              </Svg>
+              <Text style={styles.brandingText}>SOULEYA</Text>
+            </View>
+
+            {/* Inhalt unten */}
+            <View style={styles.content}>
+              {/* Tradition Label */}
+              <Text style={styles.tradition}>
+                {quote.tradition.toUpperCase()}
+              </Text>
+
+              {/* Zitat */}
+              <Text style={styles.quote}>
+                {'\u201E'}{quote.text}{'\u201C'}
+              </Text>
+
+              {/* Autor */}
+              <Text style={styles.author}>
+                {quote.author}
+              </Text>
+            </View>
           </View>
-
-          {/* Inhalt unten */}
-          <View style={styles.content}>
-            {/* Tradition Label */}
-            <Text style={styles.tradition}>
-              {quote.tradition.toUpperCase()}
-            </Text>
-
-            {/* Zitat */}
-            <Text style={styles.quote}>
-              {'\u201E'}{quote.text}{'\u201C'}
-            </Text>
-
-            {/* Autor */}
-            <Text style={styles.author}>
-              {quote.author}
-            </Text>
-          </View>
-        </ImageBackground>
         </ViewShot>
       </View>
 
@@ -158,10 +159,6 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 4 / 5,
     justifyContent: 'space-between',
-  },
-  bgImageStyle: {
-    width: '100%',
-    height: '100%',
   },
   gradientOverlay: {
     ...StyleSheet.absoluteFillObject,
