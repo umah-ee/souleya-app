@@ -9,6 +9,7 @@ import { fetchProfile } from '../../../lib/profile';
 import { fetchEvents } from '../../../lib/events';
 import { fetchMyChallenges, checkinChallenge } from '../../../lib/challenges';
 import { useChatStore } from '../../../store/chat';
+import { useAuthStore } from '../../../store/auth';
 import type { Profile } from '../../../types/profile';
 
 import GreetingCard from './GreetingCard';
@@ -19,6 +20,7 @@ import ChallengeWidget from './ChallengeWidget';
 import NearbyEventsWidget from './NearbyEventsWidget';
 
 export default function PulseDashboard() {
+  const userId = useAuthStore((s) => s.session?.user?.id);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [challenges, setChallenges] = useState<any[]>([]);
   const [nearbyEvents, setNearbyEvents] = useState<any[]>([]);
@@ -83,7 +85,7 @@ export default function PulseDashboard() {
       <ActivityBar unreadMessages={totalUnread} newPosts={0} />
 
       {/* Tageszitat */}
-      <WisdomCard userId={profile?.id} />
+      <WisdomCard userId={userId} />
 
       {/* Toolkit */}
       <ToolkitSection />
