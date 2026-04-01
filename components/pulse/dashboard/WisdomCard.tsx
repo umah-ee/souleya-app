@@ -66,13 +66,15 @@ export default function WisdomCard({ userId }: Props) {
       <View style={styles.cardClip}>
         <ViewShot
           ref={viewShotRef}
-          options={{ format: 'png', quality: 1, result: 'tmpfile', width: 1080, height: 1350 }}
+          options={{ format: 'png', quality: 1, result: 'tmpfile' }}
           style={styles.viewShot}
         >
           <ImageBackground
             source={{ uri: bgImage }}
             style={styles.card}
             resizeMode="cover"
+            imageStyle={styles.bgImageStyle}
+            fadeDuration={0}
           >
           {/* Dunkler Gradient-Overlay */}
           <View style={styles.gradientOverlay} />
@@ -156,6 +158,10 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 4 / 5,
     justifyContent: 'space-between',
+  },
+  bgImageStyle: {
+    width: '100%',
+    height: '100%',
   },
   gradientOverlay: {
     ...StyleSheet.absoluteFillObject,
